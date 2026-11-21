@@ -49,3 +49,65 @@ set_target_properties(exact_split_probe PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     SKIP_BUILD_RPATH TRUE
 )
+
+# Public API probe for paused-Keeper and bounded lifecycle integration checks.
+add_executable(rpc_lifecycle_probe rpc_lifecycle_probe.cpp)
+target_link_libraries(rpc_lifecycle_probe PRIVATE chronolog_client thallium)
+set_target_properties(rpc_lifecycle_probe PROPERTIES OUTPUT_NAME chronolog-test-rpc-lifecycle-probe
+    BUILD_WITH_INSTALL_RPATH TRUE SKIP_BUILD_RPATH TRUE)
+
+# Only preloaded by the owned native lifecycle recovery fixture.
+find_package(HDF5 REQUIRED COMPONENTS C CXX)
+add_library(rpc_archive_write_hold SHARED rpc_archive_write_hold.cpp)
+target_include_directories(rpc_archive_write_hold PRIVATE ${HDF5_INCLUDE_DIRS})
+target_link_libraries(rpc_archive_write_hold PRIVATE ${CMAKE_DL_LIBS})
+
+# Only preloaded by rpc_lifecycle_status_hold_test.py: holds or fails one
+# rename of a daemon's own lifecycle status record.
+add_library(rpc_lifecycle_status_hold SHARED rpc_lifecycle_status_hold.cpp)
+target_link_libraries(rpc_lifecycle_status_hold PRIVATE ${CMAKE_DL_LIBS})
+
+add_executable(rpc_lifecycle_archive_probe rpc_lifecycle_archive_probe.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp)
+target_include_directories(rpc_lifecycle_archive_probe PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include ${HDF5_INCLUDE_DIRS})
+target_link_libraries(rpc_lifecycle_archive_probe PRIVATE
+    chrono_common chronolog_client thallium ${HDF5_LIBRARIES})
+set_target_properties(rpc_lifecycle_archive_probe PROPERTIES
+    OUTPUT_NAME chronolog-test-rpc-lifecycle-archive-probe
+    BUILD_WITH_INSTALL_RPATH TRUE SKIP_BUILD_RPATH TRUE)
+
+add_library(rpc_player_init_hold SHARED rpc_player_init_hold.cpp)
+target_include_directories(rpc_player_init_hold PRIVATE $<TARGET_PROPERTY:thallium,INTERFACE_INCLUDE_DIRECTORIES>)
+target_link_libraries(rpc_player_init_hold PRIVATE ${CMAKE_DL_LIBS})
+
+# Default-budget lifecycle evidence against an actual separately launched Visor.
+add_executable(rpc_registry_budget_probe rpc_registry_budget_probe.cpp)
+target_include_directories(rpc_registry_budget_probe PRIVATE ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include)
+target_link_libraries(rpc_registry_budget_probe PRIVATE chrono_common chrono_rpc chronolog_client thallium)
+set_target_properties(rpc_registry_budget_probe PROPERTIES OUTPUT_NAME chronolog-test-rpc-registry-budget-probe
+    BUILD_WITH_INSTALL_RPATH TRUE SKIP_BUILD_RPATH TRUE)
+add_library(rpc_lifecycle_native_spy SHARED rpc_lifecycle_native_spy.cpp)
+target_include_directories(rpc_lifecycle_native_spy PRIVATE $<TARGET_PROPERTY:thallium,INTERFACE_INCLUDE_DIRECTORIES>)
+target_link_libraries(rpc_lifecycle_native_spy PRIVATE ${CMAKE_DL_LIBS})
+
+# MPI must leave Argobots cold for the ChronoLog-owned runtime. Run against a
+# real deployment; every rank writes and observes physical retirement.
+find_package(MPI REQUIRED)
+add_executable(rpc_mpi_lifecycle_probe rpc_mpi_lifecycle_probe.cpp)
+target_link_libraries(rpc_mpi_lifecycle_probe PRIVATE chronolog_client thallium MPI::MPI_CXX)
+set_target_properties(rpc_mpi_lifecycle_probe PROPERTIES
+    OUTPUT_NAME chronolog-test-mpi-lifecycle-probe
+    BUILD_WITH_INSTALL_RPATH TRUE SKIP_BUILD_RPATH TRUE)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(rpc_mpi_lifecycle_probe DESTINATION tests)
+endif()
+
+# Named, retained identities for the distributed managed-shutdown data check.
+add_executable(rpc_shutdown_writer_probe rpc_shutdown_writer_probe.cpp)
+target_link_libraries(rpc_shutdown_writer_probe PRIVATE chronolog_client thallium)
+set_target_properties(rpc_shutdown_writer_probe PROPERTIES OUTPUT_NAME chronolog-test-shutdown-writer-probe
+    BUILD_WITH_INSTALL_RPATH TRUE SKIP_BUILD_RPATH TRUE)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(rpc_shutdown_writer_probe DESTINATION tests)
+endif()

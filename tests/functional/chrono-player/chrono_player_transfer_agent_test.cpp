@@ -50,18 +50,24 @@ int main()
     localServiceId.get_service_as_string(LOCAL_SERVICE_NA_STRING);
 
     tl::engine* localEngine = nullptr;
+    auto runtime = std::make_shared<chl::rpc::RpcRuntime>(6);
+    std::shared_ptr<chl::PlaybackRpcOwner> owner;
     chronolog::QueryResponseAgent* transferAgent = nullptr;
 
     chl::ServiceId queryServiceId("ofi+sockets", "127.0.0.1", 5557, 57);
     try
     {
         margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
-        localEngine = new tl::engine(margo_id);
+        owner = std::make_shared<chl::PlaybackRpcOwner>(std::make_unique<tl::engine>(margo_id),
+                                                        chl::RpcTimeoutPolicy{});
+        owner->attach(runtime);
+        owner->initializeProcedure();
+        localEngine = owner->engine.get();
 
         std::cout << "started localEngine at " << localEngine->self() << std::endl;
 
 
-        transferAgent = chronolog::QueryResponseAgent::CreateQueryResponseAgent(*localEngine, queryServiceId);
+        transferAgent = chronolog::QueryResponseAgent::CreateQueryResponseAgent(owner, queryServiceId);
     }
     catch(tl::exception const&)
     {
@@ -104,6 +110,6 @@ int main()
     std::cout << "Shutting down  TransferAgent for " << chl::to_string(queryServiceId) << std::endl;
 
     delete transferAgent;
-    delete localEngine;
+    localEngine = nullptr;
     return 1;
 }

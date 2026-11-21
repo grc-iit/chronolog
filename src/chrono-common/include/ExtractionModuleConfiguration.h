@@ -13,8 +13,15 @@ namespace chronolog
 
 struct ExtractionModuleConfiguration
 {
+    ExtractionModuleConfiguration() = default;
+    ExtractionModuleConfiguration(ExtractionModuleConfiguration const&);
+    ExtractionModuleConfiguration& operator=(ExtractionModuleConfiguration const&);
+    ExtractionModuleConfiguration(ExtractionModuleConfiguration&&) noexcept;
+    ExtractionModuleConfiguration& operator=(ExtractionModuleConfiguration&&) noexcept;
+    void swap(ExtractionModuleConfiguration&) noexcept;
+
     int extraction_stream_count = 1;
-    std::string extraction_protocol = "ofi+sockets";
+    std::string extraction_protocol = "ofi+tcp";
     std::map<std::string, json_object*> extractors;
 
     std::string& to_string(std::string& a_string) const

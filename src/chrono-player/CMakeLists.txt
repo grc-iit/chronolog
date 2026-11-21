@@ -10,6 +10,7 @@ add_executable(chrono_player)
 
 target_include_directories(chrono_player PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-rpc/include
     ${CMAKE_SOURCE_DIR}/src/chrono-common/include
 )
 

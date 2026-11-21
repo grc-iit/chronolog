@@ -115,7 +115,7 @@ public:
         }
         else
         {
-            theRetentionStore->markSendFailed(chunk);
+            theRetentionStore->markSendFailed(chunk, status);
         }
     }
 

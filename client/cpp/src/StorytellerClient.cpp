@@ -1,6 +1,5 @@
 #include <atomic>
 #include <chrono>
-#include <climits>
 #include <iostream>
 #include <map>
 #include <mutex>
@@ -23,11 +22,6 @@ namespace tl = thallium;
 namespace chl = chronolog;
 
 /////////////////////
-
-uint64_t chronolog::ChronologTimer::getTimestamp()
-{
-    return std::chrono::high_resolution_clock::now().time_since_epoch().count();
-}
 
 /////////////////////
 chronolog::StoryHandle::~StoryHandle() {}
@@ -64,221 +58,365 @@ void chronolog::StoryHandleImpl<KeeperChoicePolicy>::removeRecordingClient(
     }
 }
 
-//////////////////
 template <class KeeperChoicePolicy>
-uint64_t chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string const& event_record)
+class chronolog::StoryHandleImpl<KeeperChoicePolicy>::AppendWork final: public rpc::OwnedRpcWork<int>
 {
-    chronolog::LogEvent log_event(storyId,
-                                  theClient.getTimestamp(),
-                                  theClient.getClientId(),
-                                  theClient.get_event_index(),
-                                  event_record);
-
-    auto keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, log_event.time());
-    if(nullptr == keeperRecordingClient) //very unlikely...
+public:
+    AppendWork(std::shared_ptr<ClientRpcContext> owner,
+               EntryLease entry,
+               RpcPolicyContext::Snapshot policy,
+               std::unique_ptr<KeeperRecordingClient::AppendRequest> request,
+               StoryId story,
+               uint64_t timestamp,
+               ClientId client,
+               chrono_index index,
+               std::string const& record)
+        : owner_(std::move(owner))
+        , entry_(std::move(entry))
+        , policy_(std::move(policy))
+        , request_(std::move(request))
+        , event_(story, timestamp, client, index, record)
+    {}
+    rpc::RpcResult<int> run(rpc::OperationContext& operation) override
     {
-        LOG_WARNING("[StoryHandleImpl] No keeper selected for logging event: {}", event_record);
-        return 0;
+        return request_->send_event_msg(operation, event_, policy_.policy().attempt_ms);
     }
 
-    if(chronolog::CL_SUCCESS == keeperRecordingClient->send_event_msg(log_event))
-    {
-        return log_event.eventTime;
-    }
-    else
-    {
-        return 0;
-    }
+private:
+    std::shared_ptr<ClientRpcContext> owner_;
+    EntryLease entry_;
+    RpcPolicyContext::Snapshot policy_;
+    std::unique_ptr<KeeperRecordingClient::AppendRequest> request_;
+    LogEvent event_;
+};
+
+template <class KeeperChoicePolicy>
+uint64_t chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string const& record)
+{
+    auto result = appendFromEntry(record, rpc::RpcDeadline::Clock::now());
+    return result.outcome == AppendOutcome::Acknowledged ? result.timestamp : 0;
 }
 
-//////////////////
 template <class KeeperChoicePolicy>
-int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string const& event_record,
-                                                              LogEventOptions const& options,
-                                                              uint64_t& event_time)
+chronolog::AppendResult chronolog::StoryHandleImpl<KeeperChoicePolicy>::append_event(std::string const& record)
 {
-    event_time = 0;
-    if(options.durability != Durability::Accepted && options.durability != Durability::Durable)
+    return appendFromEntry(record, rpc::RpcDeadline::Clock::now());
+}
+
+template <class KeeperChoicePolicy>
+chronolog::AppendResult
+chronolog::StoryHandleImpl<KeeperChoicePolicy>::appendFromEntry(std::string const& record,
+                                                                rpc::RpcDeadline::Clock::time_point started)
+{
+    auto entry = tryEnter();
+    if(!entry)
+        return {CL_ERR_NOT_ACQUIRED, AppendOutcome::NotSubmitted, 0, 0};
+    auto owner = context_.lock();
+    auto native = owner ? owner->acquireNative() : std::optional<ClientRpcContext::NativeLease>{};
+    if(!native)
+        return {CL_ERR_RPC_CAPACITY, AppendOutcome::NotSubmitted, 0, 0};
+    entry->retainNative(std::move(*native));
+    auto policy = theClient.acquirePolicy();
+    if(!policy)
+        return {CL_ERR_RPC_CAPACITY, AppendOutcome::NotSubmitted, 0, 0};
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(policy->policy().append_ms));
+    return append(record, deadline, std::move(*policy), std::move(*entry), std::move(owner));
+}
+
+template <class KeeperChoicePolicy>
+chronolog::AppendResult chronolog::StoryHandleImpl<KeeperChoicePolicy>::append(std::string const& record,
+                                                                               rpc::RpcDeadline const& deadline,
+                                                                               RpcPolicyContext::Snapshot policy,
+                                                                               EntryLease entry,
+                                                                               std::shared_ptr<ClientRpcContext> owner)
+{
+    auto runtime = owner->runtime.lock();
+    if(!runtime)
+        return {CL_ERR_RPC_CAPACITY, AppendOutcome::NotSubmitted, 0, 0};
+    auto timestamp = theClient.getTimestamp(deadline.expiresAt());
+    if(timestamp.status != CL_SUCCESS)
+        return {timestamp.status, AppendOutcome::NotSubmitted, 0, 0};
+    auto index = theClient.get_event_index();
+    AppendResult result{CL_ERR_DEADLINE_EXCEEDED, AppendOutcome::NotSubmitted, timestamp.timestamp, index};
+    if(deadline.expired())
+        return result;
+    // Clock failure/contending assignment needs no owned RPC context. Reserve
+    // only after stamping, before allocating the owned descriptor or payload.
+    auto reservation = runtime->reserve(deadline);
+    if(!reservation)
     {
-        return chronolog::CL_ERR_INVALID_ARG;
-    }
-    // attempts and timeout_ms are for durable writes only
-    if(options.durability == Durability::Durable && (options.attempts == 0 || options.timeout_ms == 0))
-    {
-        return chronolog::CL_ERR_INVALID_ARG;
-    }
-    // the keeper drops an empty record after answering, which would make a
-    // durable success false
-    if(options.durability == Durability::Durable && event_record.empty())
-    {
-        return chronolog::CL_ERR_INVALID_ARG;
+        result.status = reservation.status();
+        return result;
     }
     if(storyKeepers.empty())
     {
-        LOG_WARNING("[StoryHandleImpl] No keepers for Chronicle: {}, Story: {}", chronicle, story);
-        return chronolog::CL_ERR_NO_KEEPERS;
+        result.status = CL_ERR_NO_KEEPERS;
+        return result;
+    }
+    auto keeper = keeperChoicePolicy->chooseKeeper(storyKeepers, timestamp.timestamp);
+    if(!keeper)
+    {
+        result.status = CL_ERR_NO_KEEPERS;
+        return result;
+    }
+    // Reserve before copying the payload or acquiring native-bearing descriptors.
+    // Reserved submission transfers all ownership even when expiry/close wins.
+    auto work = std::make_shared<AppendWork>(owner,
+                                             std::move(entry),
+                                             std::move(policy),
+                                             keeper->prepareAppend(),
+                                             storyId,
+                                             timestamp.timestamp,
+                                             theClient.getClientId(),
+                                             index,
+                                             record);
+    auto reply = runtime->invoke<int>(std::move(reservation), std::move(work));
+    result.status = reply.status;
+    if(reply.reply)
+    {
+        result.status = *reply.reply;
+        result.outcome = *reply.reply == CL_SUCCESS ? AppendOutcome::Acknowledged : AppendOutcome::Rejected;
+    }
+    else if(reply.may_have_dispatched)
+    {
+        result.status = CL_ERR_OUTCOME_UNCONFIRMED;
+        result.outcome = AppendOutcome::Unconfirmed;
+    }
+    // One line per call the keeper did not answer, naming the keeper, as in
+    // v3.4.0.
+    if(!reply.reply)
+        LOG_ERROR("[KeeperRecordingClient] Failed to send event message to {}: {}",
+                  to_string(keeper->getRecordingServiceId()),
+                  result.status);
+    return result;
+}
+
+template <class KeeperChoicePolicy>
+class chronolog::StoryHandleImpl<KeeperChoicePolicy>::DurableWork final: public rpc::OwnedRpcWork<int>
+{
+public:
+    DurableWork(std::shared_ptr<ClientRpcContext> owner,
+                EntryLease entry,
+                RpcPolicyContext::Snapshot policy,
+                std::unique_ptr<KeeperRecordingClient::DurableRequest> request,
+                ChronicleName const& chronicle,
+                StoryName const& story,
+                LogEvent event,
+                LogEventOptions const& options)
+        : owner_(std::move(owner))
+        , entry_(std::move(entry))
+        , policy_(std::move(policy))
+        , request_(std::move(request))
+        , chronicle_(chronicle)
+        , story_(story)
+        , event_(std::move(event))
+        , options_(options)
+    {}
+    rpc::RpcResult<int> run(rpc::OperationContext& operation) override
+    {
+        return request_->send(operation, chronicle_, story_, event_, options_.timeout_ms, options_.attempts);
     }
 
-    // built once: every attempt of a durable write carries the same identity
-    chronolog::LogEvent log_event(storyId,
-                                  theClient.getTimestamp(),
-                                  theClient.getClientId(),
-                                  theClient.get_event_index(),
-                                  event_record);
+private:
+    std::shared_ptr<ClientRpcContext> owner_;
+    EntryLease entry_;
+    RpcPolicyContext::Snapshot policy_;
+    std::unique_ptr<KeeperRecordingClient::DurableRequest> request_;
+    ChronicleName chronicle_;
+    StoryName story_;
+    LogEvent event_;
+    LogEventOptions options_;
+};
 
+template <class KeeperChoicePolicy>
+int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string const& record,
+                                                              LogEventOptions const& options,
+                                                              uint64_t& event_time)
+{
+    auto started = rpc::RpcDeadline::Clock::now();
+    event_time = 0;
     if(options.durability == Durability::Durable)
     {
-        return log_durable_event(log_event, options, event_time);
+        // The keeper drops an empty record after answering, which would make
+        // a durable success false.
+        if(options.attempts == 0 || options.timeout_ms == 0 || record.empty())
+            return CL_ERR_INVALID_ARG;
+        return logDurable(record, options, event_time, started);
     }
-
-    auto keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, log_event.time());
-    if(nullptr == keeperRecordingClient)
-    {
-        LOG_WARNING("[StoryHandleImpl] No keeper selected for logging event: {}", event_record);
-        return chronolog::CL_ERR_NO_KEEPERS;
-    }
-    int const keeper_code = keeperRecordingClient->send_event_msg(log_event);
-    if(chronolog::CL_SUCCESS == keeper_code)
-    {
-        event_time = log_event.eventTime;
-    }
-    return keeper_code;
+    if(options.durability != Durability::Accepted)
+        return CL_ERR_INVALID_ARG;
+    auto result = appendFromEntry(record, started);
+    if(result.outcome != AppendOutcome::Acknowledged)
+        return result.status;
+    event_time = result.timestamp;
+    return CL_SUCCESS;
 }
 
-//////////////////
 template <class KeeperChoicePolicy>
-int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_durable_event(LogEvent const& event,
-                                                                      LogEventOptions const& options,
-                                                                      uint64_t& event_time)
+int chronolog::StoryHandleImpl<KeeperChoicePolicy>::logDurable(std::string const& record,
+                                                               LogEventOptions const& options,
+                                                               uint64_t& event_time,
+                                                               rpc::RpcDeadline::Clock::time_point started)
 {
-    // set once an attempt goes unanswered: that attempt may have stored the
-    // event, so no later answer can say that nothing was stored
-    bool may_be_stored = false;
-    for(uint32_t attempt = 1; attempt <= options.attempts; ++attempt)
+    auto entry = tryEnter();
+    if(!entry)
+        return CL_ERR_NOT_ACQUIRED;
+    auto owner = context_.lock();
+    auto native = owner ? owner->acquireNative() : std::optional<ClientRpcContext::NativeLease>{};
+    if(!native)
+        return CL_ERR_RPC_CAPACITY;
+    entry->retainNative(std::move(*native));
+    auto policy = theClient.acquirePolicy();
+    if(!policy)
+        return CL_ERR_RPC_CAPACITY;
+    auto runtime = owner->runtime.lock();
+    if(!runtime)
+        return CL_ERR_RPC_CAPACITY;
+    // One budget for the whole write, as replay has its own: attempts *
+    // timeout_ms from the call, capped where the clock would overflow.
+    constexpr uint64_t maxBudget =
+            std::chrono::duration_cast<std::chrono::milliseconds>(rpc::RpcDeadline::Clock::duration::max()).count();
+    uint64_t budget = uint64_t(options.timeout_ms) * options.attempts;
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(std::min(budget, maxBudget)));
+    auto timestamp = theClient.getTimestamp(deadline.expiresAt());
+    if(timestamp.status != CL_SUCCESS)
+        return timestamp.status;
+    // Built once: every attempt carries the same identity.
+    LogEvent event(storyId, timestamp.timestamp, theClient.getClientId(), theClient.get_event_index(), record);
+    if(deadline.expired())
+        return CL_ERR_DEADLINE_EXCEEDED;
+    auto reservation = runtime->reserve(deadline);
+    if(!reservation)
+        return reservation.status();
+    if(storyKeepers.empty())
     {
-        // chosen again on every attempt: the choice depends only on the
-        // timestamp, so a retry reaches the same keeper unless the story's
-        // keeper list changed in between
-        if(storyKeepers.empty())
-        {
-            LOG_WARNING("[StoryHandleImpl] No keepers left for durable event of Chronicle: {}, Story: {} after {} "
-                        "attempts",
-                        chronicle,
-                        story,
-                        attempt - 1);
-            break;
-        }
-        auto keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, event.time());
-        if(nullptr == keeperRecordingClient)
-        {
-            break;
-        }
-
-        int keeper_code = chronolog::CL_ERR_UNKNOWN;
-        auto const attempt_start = std::chrono::steady_clock::now();
-        DurableSendOutcome const outcome =
-                keeperRecordingClient->send_durable_event_msg(chronicle, story, event, options.timeout_ms, keeper_code);
-        switch(outcome)
-        {
-            case DurableSendOutcome::Answered:
-                if(may_be_stored && (chronolog::CL_ERR_DURABILITY_UNAVAILABLE == keeper_code ||
-                                     chronolog::CL_ERR_DURABILITY_FULL == keeper_code))
-                {
-                    keeper_code = chronolog::CL_ERR_DURABILITY_UNKNOWN;
-                }
-                // a keeper answers CL_ERR_DURABILITY_UNKNOWN itself when its WAL
-                // failed while writing the event and could not erase it
-                if(chronolog::CL_SUCCESS == keeper_code || chronolog::CL_ERR_DURABILITY_UNKNOWN == keeper_code)
-                {
-                    event_time = event.time();
-                }
-                return keeper_code;
-            case DurableSendOutcome::NotRegistered:
-                // a keeper without the RPC stored nothing and never will, but
-                // an earlier unanswered attempt may have reached a keeper that
-                // stored the event and then died
-                if(!may_be_stored)
-                {
-                    return chronolog::CL_ERR_DURABILITY_UNAVAILABLE;
-                }
-                event_time = event.time();
-                return chronolog::CL_ERR_DURABILITY_UNKNOWN;
-            case DurableSendOutcome::TimedOut:
-            case DurableSendOutcome::TransportError:
-                may_be_stored = true;
-                LOG_WARNING("[StoryHandleImpl] Durable event attempt {} of {} got no answer for Chronicle: {}, Story: "
-                            "{}",
-                            attempt,
-                            options.attempts,
-                            chronicle,
-                            story);
-                break;
-        }
-        // A forward to a dead keeper fails at once over ofi+sockets, so
-        // without a pause every attempt would be spent within milliseconds of
-        // a crash. Each attempt takes timeout_ms, as one that times out does,
-        // so the attempts span the time a restarted keeper needs to come back.
-        if(DurableSendOutcome::TransportError == outcome && attempt < options.attempts)
-        {
-            auto const attempt_end = attempt_start + std::chrono::milliseconds(options.timeout_ms);
-            std::this_thread::sleep_until(attempt_end);
-        }
+        LOG_WARNING("[StoryHandleImpl] No keepers for Chronicle: {}, Story: {}", chronicle, story);
+        return CL_ERR_NO_KEEPERS;
     }
-    if(!may_be_stored)
+    auto keeper = keeperChoicePolicy->chooseKeeper(storyKeepers, event.time());
+    if(!keeper)
+        return CL_ERR_NO_KEEPERS;
+    auto work = std::make_shared<DurableWork>(owner,
+                                              std::move(*entry),
+                                              std::move(*policy),
+                                              keeper->prepareDurable(),
+                                              chronicle,
+                                              story,
+                                              std::move(event),
+                                              options);
+    auto reply = runtime->invoke<int>(std::move(reservation), std::move(work));
+    if(reply.reply)
     {
-        // no attempt was sent: the keeper list emptied or no keeper was
-        // chosen before the first one
-        return chronolog::CL_ERR_NO_KEEPERS;
+        // The keeper answers CL_ERR_DURABILITY_UNKNOWN itself when its WAL
+        // failed while writing the event and could not erase it.
+        if(*reply.reply == CL_SUCCESS || *reply.reply == CL_ERR_DURABILITY_UNKNOWN)
+            event_time = timestamp.timestamp;
+        return *reply.reply;
     }
-    // the event may be stored; a new log_event call would give it a new
-    // identity, so the caller gets the timestamp to look for it later
-    event_time = event.time();
-    return chronolog::CL_ERR_DURABILITY_UNKNOWN;
+    LOG_ERROR("[KeeperRecordingClient] Failed to send durable event to {}: {}",
+              to_string(keeper->getRecordingServiceId()),
+              reply.may_have_dispatched ? CL_ERR_DURABILITY_UNKNOWN : reply.status);
+    if(!reply.may_have_dispatched)
+        return reply.status;
+    // An attempt went unanswered. A new log_event call would give the event a
+    // new identity, so the caller gets the timestamp to look for it later.
+    event_time = timestamp.timestamp;
+    return CL_ERR_DURABILITY_UNKNOWN;
 }
+
 /////////////////////
 
 // Tail read: delegate to the two-phase scatter/gather over this story's keepers.
 template <class KeeperChoicePolicy>
 int chronolog::StoryHandleImpl<KeeperChoicePolicy>::playback(size_t n, std::vector<Event>& events)
 {
-    return gather_story_tail(storyKeepers, storyId, n, events);
+    auto started = rpc::RpcDeadline::Clock::now();
+    auto entry = tryEnter();
+    if(!entry)
+        return CL_ERR_NOT_ACQUIRED;
+    auto owner = context_.lock();
+    auto native = owner ? owner->acquireNative() : std::optional<ClientRpcContext::NativeLease>{};
+    if(!native)
+        return CL_ERR_RPC_CAPACITY;
+    entry->retainNative(std::move(*native));
+    auto policy = theClient.acquirePolicy();
+    if(!policy)
+        return CL_ERR_RPC_CAPACITY;
+    auto runtime = owner->runtime.lock();
+    if(!runtime)
+        return CL_ERR_RPC_CAPACITY;
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(policy->policy().tail_ms));
+    struct Retention
+    {
+        std::shared_ptr<ClientRpcContext> owner;
+        EntryLease entry;
+        RpcPolicyContext::Snapshot policy;
+    };
+    auto retained = std::make_shared<Retention>(Retention{owner, std::move(*entry), std::move(*policy)});
+    return gather_story_tail(storyKeepers,
+                             storyId,
+                             n,
+                             events,
+                             deadline,
+                             *runtime,
+                             retained,
+                             retained->policy.policy().attempt_ms);
 }
 /////////////////////
 
 chronolog::StorytellerClient::~StorytellerClient()
 {
-    LOG_DEBUG("[StorytellerClient] Destructor called.");
-    {
-        std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
-        /*
-        //TODO: investigate why the folowing lines were commented out in the previous version
-        for( auto story_record_iter : acquiredStoryHandles)
-        {
-            delete story_record_iter.second;
-        }
-        acquiredStoryHandles.clear();
-  */  }
-        // stop & delete keeperRecordingClients
-        std::lock_guard<std::mutex> lock(recordingClientMapMutex);
-        for(auto keeper_client: recordingClientMap) { delete keeper_client.second; }
-        recordingClientMap.clear();
+    clearAcquiredStoryHandles();
+    for(auto const& keeper: recordingClientMap) delete keeper.second;
+}
+void chronolog::StorytellerClient::clearAcquiredStoryHandles()
+{
+    std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    for(auto const& handle: acquiredStoryHandles)
+        static_cast<StoryHandleImpl<RoundRobinKeeperChoice>*>(handle.second)->invalidate();
+    acquiredStoryHandles.clear();
+    reapRetiredHandles();
 }
 
-int chronolog::StorytellerClient::get_event_index()
+void chronolog::StorytellerClient::reapRetiredHandles()
 {
-    // we only aqcuire mutex in the rare case when
-    // the atomic index has reached INT_MAX value
-    // otherwise proceed lock-free
-    if((atomic_index == INT_MAX))
+    for(auto position = ownedHandles_.begin(); position != ownedHandles_.end();)
+        if(static_cast<StoryHandleImpl<RoundRobinKeeperChoice>*>(position->get())->retiredAndIdle())
+            position = ownedHandles_.erase(position);
+        else
+            ++position;
+}
+size_t chronolog::StorytellerClient::retainedHandleCount()
+{
+    std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    reapRetiredHandles();
+    return ownedHandles_.size();
+}
+
+void chronolog::StorytellerClient::quiesceNativeEntries()
+{
+    std::unique_lock<std::mutex> lock(acquiredStoryMapMutex);
+    for(auto const& handle: ownedHandles_)
+        static_cast<StoryHandleImpl<RoundRobinKeeperChoice>*>(handle.get())->invalidate();
+    acquiredStoryHandles.clear();
+    for(;;)
     {
-        std::lock_guard<std::mutex> lock(recordingClientMapMutex);
-        //recheck when mutex is acquired, only one thread changes the value
-        if(atomic_index == INT_MAX)
-        {
-            atomic_index = 0;
-        }
+        bool settled = true;
+        for(auto const& handle: ownedHandles_)
+            settled &= static_cast<StoryHandleImpl<RoundRobinKeeperChoice>*>(handle.get())->retiredAndIdle();
+        if(settled)
+            return;
+        lock.unlock();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        lock.lock();
     }
-    return ++atomic_index;
+}
+
+chronolog::chrono_index chronolog::StorytellerClient::get_event_index() noexcept
+{
+    // Unsigned fetch_add wraps modulo 2^32; zero is a valid event index.
+    // This is an identity component, not a gapless writer sequence.
+    return atomic_index.fetch_add(1, std::memory_order_relaxed) + chrono_index{1};
 }
 ////////////////
 
@@ -290,14 +428,19 @@ int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::ServiceId 
     try
     {
         chronolog::KeeperRecordingClient* keeperRecordingClient =
-                chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(client_engine, keeper_service_id);
+                chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(client_engine,
+                                                                              keeper_service_id,
+                                                                              procedures_);
 
+        if(!keeperRecordingClient)
+            return 0;
         auto insert_return =
                 recordingClientMap.insert(std::pair<std::pair<uint32_t, uint16_t>, chronolog::KeeperRecordingClient*>(
                         keeper_service_id.get_service_endpoint(),
                         keeperRecordingClient));
         if(false == insert_return.second)
         {
+            delete keeperRecordingClient;
             LOG_ERROR("[StorytellerClient] Failed to create KeeperRecordingClient for {}",
                       to_string(keeper_service_id));
             return 0;
@@ -341,6 +484,7 @@ chronolog::StoryHandle* chronolog::StorytellerClient::findStoryHandle(ChronicleN
                                                                       StoryName const& story)
 {
     std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    reapRetiredHandles();
 
     auto story_record_iter = acquiredStoryHandles.find(std::pair<std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
@@ -371,6 +515,7 @@ chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronic
 //INNA: TODO :KeeperChoicePolicy will have to be communicated here as well ....
 {
     std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    reapRetiredHandles();
 
     auto story_record_iter = acquiredStoryHandles.find(std::pair<std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
@@ -382,8 +527,8 @@ chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronic
     }
 
     // create new StoryHandleImpl & initialize its keeperClients vector
-    chronolog::StoryHandleImpl<RoundRobinKeeperChoice>* storyHandle =
-            new StoryHandleImpl<RoundRobinKeeperChoice>(*this, chronicle, story, story_id);
+    auto ownedHandle = std::make_unique<StoryHandleImpl<RoundRobinKeeperChoice>>(*this, chronicle, story, story_id);
+    auto* storyHandle = ownedHandle.get();
 
     for(ServiceId const& keeper_service_id: vectorOfKeepers)
     {
@@ -396,7 +541,7 @@ chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronic
             {
                 LOG_WARNING("[StorytellerClient] Failed to add KeeperRecordingClient for {}",
                             to_string(keeper_service_id));
-                continue;
+                return nullptr;
             }
         }
         keeper_client_iter = recordingClientMap.find(keeper_service_id.get_service_endpoint());
@@ -404,6 +549,7 @@ chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronic
         storyHandle->addRecordingClient((*keeper_client_iter).second);
     }
 
+    ownedHandles_.push_back(std::move(ownedHandle));
     auto insert_return =
             acquiredStoryHandles.insert(std::pair<std::pair<std::string, std::string>, chronolog::StoryHandle*>(
                     std::pair<std::string, std::string>(chronicle, story),
@@ -413,7 +559,7 @@ chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronic
         LOG_ERROR("[StorytellerClient] Failed to insert StoryHandleImpl for Chronicle: '{}' and Story: '{}'.",
                   chronicle,
                   story);
-        delete storyHandle;
+        ownedHandles_.pop_back();
         return nullptr;
     }
 
@@ -438,12 +584,17 @@ chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronic
 void chronolog::StorytellerClient::removeAcquiredStoryHandle(ChronicleName const& chronicle, StoryName const& story)
 {
     std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    reapRetiredHandles();
 
     auto story_record_iter = acquiredStoryHandles.find(std::pair<std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
     {
-        delete(*story_record_iter).second;
+        static_cast<StoryHandleImpl<RoundRobinKeeperChoice>*>(story_record_iter->second)->invalidate();
+        // Retain admitted calls/owned continuations through settlement. Raw
+        // pointer invocation must already satisfy the caller lifetime contract.
+        // B05/B08 retain these leases in work that outlives its public call.
         acquiredStoryHandles.erase(story_record_iter);
+        reapRetiredHandles();
         LOG_INFO("[StorytellerClient] Successfully removed StoryHandle for Chronicle: '{}' and Story: '{}'.",
                  chronicle,
                  story);

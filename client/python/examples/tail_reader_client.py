@@ -50,7 +50,7 @@ def parse_args():
     parser.add_argument("--visor-ip", default="127.0.0.1")
     parser.add_argument("--visor-port", type=int, default=5555)
     parser.add_argument("--visor-provider", type=int, default=55)
-    parser.add_argument("--protocol", default="ofi+sockets")
+    parser.add_argument("--protocol", default="ofi+tcp")
     parser.add_argument("--chronicle", default="py_chronicle")
     parser.add_argument("--story", default="tail_story")
     parser.add_argument(

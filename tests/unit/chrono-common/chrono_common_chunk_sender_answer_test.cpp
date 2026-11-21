@@ -11,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include <chrono_monitor.h>
 #include <ChunkReceipt.h>
@@ -151,19 +152,25 @@ TEST(ChunkSenderAnswer, OtherErrorsAreNotSwallowed)
     EXPECT_THROW(chl::answerChunkSender(request, receiptOf(4096), "test"), std::logic_error);
 }
 
-// Every answer in both handlers goes through the helper: the deserialization
-// failure, the received chunk, the out-of-memory case and the failed bulk pull.
+// Every answer in both handlers goes through BulkReceiveContext::answer, which
+// catches a failed reply as answerChunkSender does: a failed pull, the
+// checksum or deserialization failure, the received chunk and the failure
+// path, and in the grapher also a duplicate of a written chunk. A request that
+// finds no free slot is refused through BulkReceives::refuse, which catches
+// too. Only the failure path keeps its slot, when a piece may be in flight.
 TEST(ChunkSenderAnswer, BothReceiversAnswerOnlyThroughTheHelper)
 {
-    for(char const* path: {CHRONOLOG_GRAPHER_RECORDING_SERVICE, CHRONOLOG_CHUNK_CONSUMER_SERVICE})
+    for(auto const& [path, answers]: {std::pair<char const*, std::size_t>{CHRONOLOG_GRAPHER_RECORDING_SERVICE, 5},
+                                      std::pair<char const*, std::size_t>{CHRONOLOG_CHUNK_CONSUMER_SERVICE, 4}})
     {
         std::string const file = fileText(path);
         ASSERT_FALSE(file.empty()) << path;
         std::string const handler = handlerText(file);
         ASSERT_FALSE(handler.empty()) << "no receive_story_chunk in " << path;
         EXPECT_EQ(occurrences(handler, "request.respond("), 0u) << path;
-        EXPECT_EQ(occurrences(handler, "answerChunkSender(request, "), 4u) << path;
-        EXPECT_EQ(occurrences(handler, "catch(tl::exception const&"), 1u) << path;
+        EXPECT_EQ(occurrences(handler, "context->answer("), answers) << path;
+        EXPECT_EQ(occurrences(handler, "incoming.refuse(request"), 1u) << path;
+        EXPECT_EQ(occurrences(handler, "lease->quarantine()"), 1u) << path;
     }
 }
 
@@ -183,8 +190,10 @@ TEST(ChunkSenderAnswer, ThalliumErrorFromAnIntAnswerDoesNotLeaveTheHandler)
     EXPECT_EQ(request.responds, 2);
 }
 
-// The keeper's handlers answer only through the helper: record_event and
-// record_event_durable (four answers), then tail_get_sequences,
+// The keeper's handlers answer only through rpc::respond, which catches a
+// failed reply: record_event (two: the refusal after quiescence and the
+// answer), record_event_durable (three: the refusal after quiescence, the
+// WAL-off answer and the durable answer), then tail_get_sequences,
 // tail_get_events and story_range_fetch (one each).
 TEST(ChunkSenderAnswer, KeeperHandlersAnswerOnlyThroughTheHelper)
 {
@@ -198,5 +207,5 @@ TEST(ChunkSenderAnswer, KeeperHandlersAnswerOnlyThroughTheHelper)
         EXPECT_NE(handlers.find(name), std::string::npos) << name;
     }
     EXPECT_EQ(occurrences(handlers, "request.respond("), 0u);
-    EXPECT_EQ(occurrences(handlers, "answerRpcCaller(request, "), 7u);
+    EXPECT_EQ(occurrences(handlers, "rpc::respond(request, "), 8u);
 }

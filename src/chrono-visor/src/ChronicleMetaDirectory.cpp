@@ -21,7 +21,11 @@ ChronicleMetaDirectory::ChronicleMetaDirectory()
     chronicleMap_ = new std::unordered_map<uint64_t, Chronicle*>();
 }
 
-ChronicleMetaDirectory::~ChronicleMetaDirectory() { delete chronicleMap_; }
+ChronicleMetaDirectory::~ChronicleMetaDirectory()
+{
+    for(auto& entry: *chronicleMap_) delete entry.second;
+    delete chronicleMap_;
+}
 
 /**
  * Create a Chronicle
@@ -228,7 +232,7 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const& client_id,
         return ret.first;
     }
     Story* pStory = ret.second;
-    /* Last check if this client has acquired this Story already, do nothing and return success if true */
+    /* Last check if this client has acquired this Story already: change nothing, report its id */
     auto acquirerMap = pStory->getAcquirerMap();
     auto acquirerMapRecord = acquirerMap.find(client_id);
     if(acquirerMapRecord != acquirerMap.end())
@@ -236,7 +240,7 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const& client_id,
         LOG_DEBUG("[ChronicleMetaDirectory] StoryName={} has already been acquired by ClientID={}",
                   story_name.c_str(),
                   client_id);
-        /* All checks passed, manipulate metadata */
+        story_id = pStory->getSid();
         return chronolog::CL_ERR_ACQUIRED;
     }
 
@@ -266,7 +270,8 @@ int ChronicleMetaDirectory::release_story(chl::ClientId const& client_id,
                                           const std::string& chronicle_name,
                                           const std::string& story_name,
                                           StoryId& story_id,
-                                          bool& was_last_acquirer)
+                                          bool& was_last_acquirer,
+                                          StoryId expected_story_id)
 {
     was_last_acquirer = false;
     LOG_DEBUG("[ChronicleMetaDirectory] ClientID={} releasing StoryName={} in ChronicleName={}",
@@ -284,6 +289,8 @@ int ChronicleMetaDirectory::release_story(chl::ClientId const& client_id,
         Chronicle* pChronicle = chronicleRecord->second;
         /* Then check if Story exists, fail if false */
         uint64_t sid = pChronicle->getStoryId(story_name);
+        if(expected_story_id != 0 && sid != expected_story_id)
+            return chronolog::CL_ERR_OUTCOME_UNCONFIRMED;
         if(sid == 0)
         {
             return chronolog::CL_ERR_NOT_EXIST;

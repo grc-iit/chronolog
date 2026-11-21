@@ -8,6 +8,7 @@
 #include <ExtractionModuleConfiguration.h>
 #include <ChunkExtractorCSV.h>
 #include <ChunkExtractorRDMA.h>
+#include <private/RpcBulkOwner.h>
 
 
 namespace chl = chronolog;
@@ -157,11 +158,15 @@ int main()
     localServiceId.get_service_as_string(LOCAL_SERVICE_NA_STRING);
 
     tl::engine* localEngine = nullptr;
+    auto runtime = std::make_shared<chl::rpc::RpcRuntime>();
+    std::shared_ptr<chl::rpc::RpcBulkOwner> owner;
 
     try
     {
         margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
-        localEngine = new tl::engine(margo_id);
+        auto native = std::make_shared<tl::engine>(margo_id);
+        owner = chl::rpc::RpcBulkOwner::Create(native, runtime, chl::RpcTimeoutPolicy{}, true);
+        localEngine = native.get();
     }
     catch(tl::exception const&)
     {
@@ -228,7 +233,7 @@ int main()
 
     if(localEngine != nullptr)
     {
-        delete localEngine;
+        localEngine = nullptr;
     }
 
     return return_value;

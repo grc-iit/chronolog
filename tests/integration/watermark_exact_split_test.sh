@@ -119,10 +119,11 @@ write_burst() { # $1 = label, $2 = hold seconds (0: release right away); appends
     else
         "$PROBE" --config "$WRITER_CLIENT_CONF" write "$CHRONICLE" "$STORY" "$BURST" > "$out" 2>&1
     fi
-    sed -n 's/^WROTE \([0-9]*\)$/\1/p' "$out" > "$RUN_DIR/burst_$1"
+    sed -n 's/^WROTE \([1-9][0-9]*\)$/\1/p' "$out" > "$RUN_DIR/burst_$1"
     cat "$RUN_DIR/burst_$1" >> "$WRITTEN"
     if [ "$(wc -l < "$RUN_DIR/burst_$1")" -ne "$BURST" ]; then
-        say "burst $1 wrote $(wc -l < "$RUN_DIR/burst_$1") of $BURST events (see $out)"
+        say "burst $1 wrote $(wc -l < "$RUN_DIR/burst_$1") of $BURST events:"
+        grep -E '^(WRITE_FAILED|WRITE_STATUS|WROTE 0$)' "$out" | sed 's/^/    /'
         return 1
     fi
 }
@@ -133,7 +134,7 @@ burst_window() { # the window start (seconds) of a burst; fails if it straddles 
     last=$(sort -n "$RUN_DIR/burst_$1" | tail -1)
     local w_first=$(($(sec_of "$first") / G_CHUNK * G_CHUNK))
     local w_last=$(($(sec_of "$last") / G_CHUNK * G_CHUNK))
-    [ "$w_first" -eq "$w_last" ] || { say "burst $1 straddles windows $w_first and $w_last"; return 1; }
+    [ "$w_first" -eq "$w_last" ] || { say "burst $1 straddles windows $w_first and $w_last" >&2; return 1; }
     echo "$w_first"
 }
 
@@ -206,7 +207,24 @@ jq ".chrono_keeper.DataStoreInternals.story_chunk_duration_secs = $K_CHUNK |
 mv -f "$CONF_TEMPLATE.wmark_exact_patched" "$CONF_TEMPLATE"
 
 restore_conf() { mv -f "$CONF_TEMPLATE.wmark_exact_backup" "$CONF_TEMPLATE"; }
-trap 'cleanup; restore_conf; rm -rf "$RUN_DIR"' EXIT
+# On a failure, print the probes' output, which run_integration_tests.sh keeps
+# in the script's log, and leave RUN_DIR in place
+finish() {
+    local status=$?
+    cleanup
+    restore_conf
+    if [ "$status" -eq 0 ]; then
+        rm -rf "$RUN_DIR"
+        return
+    fi
+    for out in "$RUN_DIR"/*.out; do
+        [ -f "$out" ] || continue
+        echo "---- $(basename "$out")"
+        cat "$out"
+    done
+    say "exit $status; probe output kept in $RUN_DIR"
+}
+trap finish EXIT
 
 kill_daemons
 sleep 2

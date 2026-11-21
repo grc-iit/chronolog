@@ -1,23 +1,49 @@
 #include <map>
-#include <tuple>
-#include <utility>
+#include <memory>
 #include <vector>
 
 #include <gtest/gtest.h>
 
-#include <KeeperRegistry.h>
+#include <VisorAdminRuntime.h>
 
-using chronolog::ChronicleName;
-using chronolog::RecordingGroup;
+using chronolog::AdminCompletion;
+using chronolog::KeeperIdCard;
+using chronolog::settleUnresolvedStart;
 using chronolog::storiesToStartOnRegistration;
 using chronolog::StoryId;
-using chronolog::StoryName;
-using chronolog::storyRecordedByGroup;
+using chronolog::StoryRecording;
+using chronolog::StoryStopTargets;
+using chronolog::storyStopTargets;
+using chronolog::UnresolvedStart;
 
 namespace
 {
 
-using StoryList = std::vector<std::tuple<ChronicleName, StoryName, StoryId>>;
+std::shared_ptr<StoryRecording> recording(StoryId id, chronolog::RecordingGroupId group, StoryRecording::Phase phase)
+{
+    auto r = std::make_shared<StoryRecording>();
+    r->id = id;
+    r->group = group;
+    r->phase = phase;
+    return r;
+}
+
+std::vector<StoryId> ids(std::vector<std::shared_ptr<StoryRecording>> const& stories)
+{
+    std::vector<StoryId> out;
+    for(auto const& s: stories) out.push_back(s->id);
+    return out;
+}
+
+std::shared_ptr<AdminCompletion> settled(int status, bool confirmed = true, bool dispatched = true)
+{
+    auto c = std::make_shared<AdminCompletion>();
+    c->status = status;
+    c->confirmed = confirmed;
+    c->dispatched = dispatched;
+    c->done.store(true);
+    return c;
+}
 
 } // namespace
 
@@ -26,90 +52,106 @@ using StoryList = std::vector<std::tuple<ChronicleName, StoryName, StoryId>>;
 // keepers never see events of those stories.
 TEST(KeeperRestartStories, OnlyStoriesOfTheKeepersGroupAreListed)
 {
-    RecordingGroup group_one(1);
-    RecordingGroup group_two(2);
+    std::map<StoryId, std::shared_ptr<StoryRecording>> const active{{10, recording(10, 1, StoryRecording::Active)},
+                                                                    {20, recording(20, 2, StoryRecording::Active)},
+                                                                    {30, recording(30, 1, StoryRecording::Active)}};
 
-    std::map<StoryId, RecordingGroup*> const active{{10, &group_one}, {20, &group_two}, {30, &group_one}};
-    std::map<StoryId, std::pair<ChronicleName, StoryName>> const names{{10, {"chronicle_a", "story_1"}},
-                                                                       {20, {"chronicle_a", "story_2"}},
-                                                                       {30, {"chronicle_b", "story_3"}}};
-
-    EXPECT_EQ(storiesToStartOnRegistration(active, names, 1),
-              (StoryList{{"chronicle_a", "story_1", 10}, {"chronicle_b", "story_3", 30}}));
-    EXPECT_EQ(storiesToStartOnRegistration(active, names, 2), (StoryList{{"chronicle_a", "story_2", 20}}));
-    EXPECT_TRUE(storiesToStartOnRegistration(active, names, 3).empty());
+    EXPECT_EQ(ids(storiesToStartOnRegistration(active, 1)), (std::vector<StoryId>{10, 30}));
+    EXPECT_EQ(ids(storiesToStartOnRegistration(active, 2)), (std::vector<StoryId>{20}));
+    EXPECT_TRUE(storiesToStartOnRegistration(active, 3).empty());
 }
 
 // On a fresh deployment no client holds a story yet, so a keeper registering
 // for the first time is sent nothing.
 TEST(KeeperRestartStories, NothingIsListedWhenNoStoryIsActive)
 {
-    std::map<StoryId, RecordingGroup*> const active;
-    std::map<StoryId, std::pair<ChronicleName, StoryName>> const names;
-
-    EXPECT_TRUE(storiesToStartOnRegistration(active, names, 1).empty());
+    std::map<StoryId, std::shared_ptr<StoryRecording>> const active;
+    EXPECT_TRUE(storiesToStartOnRegistration(active, 1).empty());
 }
 
-// A released story leaves activeStories. Starting it on the keeper would leave
-// a pipeline that no stop notification ever reaches.
-TEST(KeeperRestartStories, ReleasedStoryIsNotListed)
+// A story still being acquired, being stopped, or left unresolved by a failed
+// acquire or stop is not started: its first acquire or its stop owns it, and a
+// start sent now could outlive the stop that ends it.
+TEST(KeeperRestartStories, OnlyActiveStoriesAreListed)
 {
-    RecordingGroup group_one(1);
-
-    std::map<StoryId, RecordingGroup*> const active{{10, &group_one}};
-    // the names of story 20 outlived its release: the list follows activeStories
-    std::map<StoryId, std::pair<ChronicleName, StoryName>> const names{{10, {"chronicle_a", "story_1"}},
-                                                                       {20, {"chronicle_a", "story_2"}}};
-
-    EXPECT_EQ(storiesToStartOnRegistration(active, names, 1), (StoryList{{"chronicle_a", "story_1", 10}}));
+    std::map<StoryId, std::shared_ptr<StoryRecording>> const active{{10, recording(10, 1, StoryRecording::Starting)},
+                                                                    {20, recording(20, 1, StoryRecording::Active)},
+                                                                    {30, recording(30, 1, StoryRecording::Closing)},
+                                                                    {40, recording(40, 1, StoryRecording::Unresolved)}};
+    EXPECT_EQ(ids(storiesToStartOnRegistration(active, 1)), (std::vector<StoryId>{20}));
 }
 
-// The keeper's start_story_recording needs the names, so a story the visor
-// has no names for cannot be started, and a story with no group is not
-// recorded by anyone.
-TEST(KeeperRestartStories, StoryWithoutNamesOrGroupIsNotListed)
+// The stop goes to the first acquire's starts that succeeded, as before, and
+// to every start sent to a keeper that registered later, whatever its answer:
+// a failed call may still have run on that keeper.
+TEST(KeeperRestartStories, StopReachesEveryLaterStartAndTheSucceededFirstOnes)
 {
-    RecordingGroup group_one(1);
+    StoryRecording r;
+    r.starts = {settled(chronolog::CL_SUCCESS), settled(chronolog::CL_ERR_UNKNOWN), settled(chronolog::CL_SUCCESS)};
+    r.originalStarts = r.starts.size();
+    r.starts.push_back(settled(chronolog::CL_ERR_UNKNOWN, false)); // timed out on the registering keeper
+    r.starts.push_back(settled(chronolog::CL_SUCCESS));
 
-    std::map<StoryId, RecordingGroup*> const active{{10, &group_one}, {20, &group_one}, {30, nullptr}};
-    std::map<StoryId, std::pair<ChronicleName, StoryName>> const names{{10, {"chronicle_a", "story_1"}},
-                                                                       {30, {"chronicle_a", "story_3"}}};
-
-    EXPECT_EQ(storiesToStartOnRegistration(active, names, 1), (StoryList{{"chronicle_a", "story_1", 10}}));
+    auto stop = storyStopTargets(r);
+    EXPECT_EQ(stop.state, StoryStopTargets::Ready);
+    EXPECT_EQ(stop.targets, (std::vector<std::size_t>{0, 2, 3, 4}));
 }
 
-// After start_story_recording reaches a registering keeper, the visor checks
-// the story again: a story still recorded by the keeper's group is stopped by
-// whoever later erases it, but one released (or rolled back) while the start
-// was in flight must be stopped right away, or the keeper keeps a pipeline
-// that no stop notification reaches.
-TEST(KeeperRestartStories, StoryStillRecordedByTheGroupNeedsNoStop)
+// A start still in flight to a registering keeper holds the stop back: sent
+// now, the stop could reach the keeper before the start and leave it a
+// pipeline that no stop ever reaches.
+TEST(KeeperRestartStories, StopWaitsForAStartInFlight)
 {
-    RecordingGroup group_one(1);
+    StoryRecording r;
+    r.starts = {settled(chronolog::CL_SUCCESS), settled(chronolog::CL_SUCCESS)};
+    r.originalStarts = r.starts.size();
+    r.starts.push_back(std::make_shared<AdminCompletion>());
 
-    std::map<StoryId, RecordingGroup*> const active{{10, &group_one}};
-
-    EXPECT_TRUE(storyRecordedByGroup(active, 10, 1));
+    EXPECT_EQ(storyStopTargets(r).state, StoryStopTargets::Pending);
+    r.starts.back()->status = chronolog::CL_SUCCESS;
+    r.starts.back()->confirmed = true;
+    r.starts.back()->done.store(true);
+    EXPECT_EQ(storyStopTargets(r).state, StoryStopTargets::Ready);
 }
 
-TEST(KeeperRestartStories, StoryReleasedDuringTheStartNeedsStop)
+// A start of the first acquire that was sent and never answered may have run,
+// so it gets a stop like a succeeded one: stop is idempotent, and a component
+// that never had the story ignores it. Before, the story could never be
+// released, since no answer ever comes for a start that timed out. One that
+// was never sent cannot have run and gets none.
+TEST(KeeperRestartStories, UnconfirmedFirstStartGetsAStop)
 {
-    RecordingGroup group_one(1);
-
-    std::map<StoryId, RecordingGroup*> const active{{10, &group_one}};
-
-    EXPECT_FALSE(storyRecordedByGroup(active, 20, 1));
-    EXPECT_FALSE(storyRecordedByGroup(std::map<StoryId, RecordingGroup*>{}, 10, 1));
+    StoryRecording r;
+    r.starts = {settled(chronolog::CL_SUCCESS),
+                settled(chronolog::CL_ERR_OUTCOME_UNCONFIRMED, false),
+                settled(chronolog::CL_ERR_DEADLINE_EXCEEDED, false, false),
+                settled(chronolog::CL_SUCCESS)};
+    r.originalStarts = r.starts.size();
+    auto stop = storyStopTargets(r);
+    EXPECT_EQ(stop.state, StoryStopTargets::Ready);
+    EXPECT_EQ(stop.targets, (std::vector<std::size_t>{0, 1, 3}));
 }
 
-// Released and acquired again by another group while the start was in flight:
-// the keeper's group no longer records the story, so its keeper must stop it.
-TEST(KeeperRestartStories, StoryNowRecordedByAnotherGroupNeedsStop)
+// An unresolved story whose starts all succeeded becomes Active with the
+// keepers the player was told about, not every keeper that succeeded: a keeper
+// that confirmed after the roster closed gets no writes the player would
+// fetch. Before, the roster was rebuilt from every succeeded keeper, so writes
+// could go to a keeper replays never ask.
+TEST(KeeperRestartStories, SettledStoryKeepsThePlayersRoster)
 {
-    RecordingGroup group_two(2);
-
-    std::map<StoryId, RecordingGroup*> const active{{10, &group_two}, {30, nullptr}};
-
-    EXPECT_FALSE(storyRecordedByGroup(active, 10, 1));
-    EXPECT_FALSE(storyRecordedByGroup(active, 30, 1));
+    KeeperIdCard a(1, chronolog::ServiceId("ofi+tcp", "127.0.0.1", 6001, 61));
+    KeeperIdCard b(1, chronolog::ServiceId("ofi+tcp", "127.0.0.1", 6002, 62));
+    StoryRecording r;
+    r.keepers = {a, b};
+    r.confirmedKeepers = {a};                    // the roster the player was given
+    r.clients.resize(4);                         // grapher, two keepers, player
+    r.starts = {settled(chronolog::CL_SUCCESS),  // grapher
+                settled(chronolog::CL_SUCCESS),  // a
+                settled(chronolog::CL_SUCCESS),  // b, after the roster closed
+                settled(chronolog::CL_SUCCESS)}; // player
+    r.originalStarts = r.starts.size();
+    auto settledStart = settleUnresolvedStart(r);
+    ASSERT_EQ(settledStart.state, UnresolvedStart::Active);
+    ASSERT_EQ(settledStart.keepers.size(), 1u);
+    EXPECT_EQ(chronolog::to_string(settledStart.keepers.front()), chronolog::to_string(a));
 }

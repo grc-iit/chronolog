@@ -1,3 +1,4 @@
+#include <private/NativeThreadLabel.h>
 #include <unistd.h>
 #include <map>
 #include <mutex>
@@ -463,10 +464,10 @@ void chronolog::GrapherDataStore::collectIngestedEvents()
 {
     LOG_DEBUG("[GrapherDataStore] Initiating collection of ingested story chunks. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
-              state,
+              state.load(),
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
     theIngestionQueue.drainOrphanChunks();
 
     std::lock_guard storeLock(dataStoreMutex);
@@ -483,10 +484,10 @@ void chronolog::GrapherDataStore::extractDecayedStoryChunks()
 {
     LOG_DEBUG("[GrapherDataStore] Initiating extraction of decayed story chunks. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
-              state,
+              state.load(),
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
 
     uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
 
@@ -505,10 +506,10 @@ void chronolog::GrapherDataStore::retireDecayedPipelines()
 {
     LOG_TRACE("[GrapherDataStore] Initiating retirement of decayed pipelines. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
-              state,
+              state.load(),
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
 
     std::vector<chl::StoryChunk*> extracted_story_chunks;
 
@@ -548,10 +549,10 @@ void chronolog::GrapherDataStore::retireDecayedPipelines()
 
     LOG_TRACE("[GrapherDataStore] Completed retirement of decayed pipelines. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
-              state,
+              state.load(),
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
 }
 
 void chronolog::GrapherDataStore::adoptOrphanChunks()
@@ -640,13 +641,13 @@ void chronolog::GrapherDataStore::dataCollectionTask()
     tl::xstream es = tl::xstream::self();
     LOG_DEBUG("[GrapherDataStore] Initiating DataCollectionTask. ESrank={}, ThreadID={}",
               es.get_rank(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
 
     while(!is_shutting_down())
     {
         LOG_DEBUG("[GrapherDataStore] Running DataCollection iteration. ESrank={}, ThreadID={}",
                   es.get_rank(),
-                  tl::thread::self_id());
+                  chronolog::rpc::nativeThreadLabel());
         for(int i = 0; i < 1; ++i)
         {
             collectIngestedEvents();
@@ -670,7 +671,7 @@ void chronolog::GrapherDataStore::dataCollectionTask()
             theWatermarkPublisher->publish();
         }
     }
-    LOG_DEBUG("[GrapherDataStore] Exiting DataCollectionTask thread {}", tl::thread::self_id());
+    LOG_DEBUG("[GrapherDataStore] Exiting DataCollectionTask thread {}", chronolog::rpc::nativeThreadLabel());
 }
 
 ////////////////////////
@@ -685,13 +686,14 @@ void chronolog::GrapherDataStore::startDataCollection(int stream_count)
 
     LOG_INFO("[GrapherDataStore] Starting data collection. StreamCount={}, ThreadID={}",
              stream_count,
-             tl::thread::self_id());
+             chronolog::rpc::nativeThreadLabel());
     state = RUNNING;
 
     for(int i = 0; i < stream_count; ++i)
     {
         tl::managed<tl::xstream> es = tl::xstream::create();
         dataStoreStreams.push_back(std::move(es));
+        nativeHandles_.fetch_add(1, std::memory_order_release);
     }
 
     for(int i = 0; i < 2 * stream_count; ++i)
@@ -699,6 +701,7 @@ void chronolog::GrapherDataStore::startDataCollection(int stream_count)
         tl::managed<tl::thread> th =
                 dataStoreStreams[i % (dataStoreStreams.size())]->make_thread([p = this]() { p->dataCollectionTask(); });
         dataStoreThreads.push_back(std::move(th));
+        nativeHandles_.fetch_add(1, std::memory_order_release);
     }
 
     // Spawn the dedicated destroy worker. We use a std::thread (not a thallium
@@ -710,79 +713,88 @@ void chronolog::GrapherDataStore::startDataCollection(int stream_count)
 
     LOG_INFO("[GrapherDataStore] Data collection started successfully. Stream count={}, ThreadID={}",
              stream_count,
-             tl::thread::self_id());
+             chronolog::rpc::nativeThreadLabel());
 }
 //////////////////////////////
 
 void chronolog::GrapherDataStore::shutdownDataCollection()
 {
-    // switch the state to shuttingDown
-    std::lock_guard storeLock(dataStoreStateMutex);
-    if(is_shutting_down())
-    {
-        LOG_INFO("[GrapherDataStore] Data collection is already shutting down. Ignoring additional shutdown request.");
-        return;
-    }
+    collectionJoin.finish(
+            [this]
+            {
+                // switch the state to shuttingDown
 
-    LOG_INFO("[GrapherDataStore] Initiating shutdown of DataCollection. CurrentState={}, MapOfStoryPipelines={}, "
-             "PipelinesWaitingForExit={}",
-             state,
-             theMapOfStoryPipelines.size(),
-             pipelinesWaitingForExit.size());
+                LOG_INFO("[GrapherDataStore] Initiating shutdown of DataCollection. CurrentState={}, "
+                         "MapOfStoryPipelines={}, "
+                         "PipelinesWaitingForExit={}",
+                         state.load(),
+                         theMapOfStoryPipelines.size(),
+                         pipelinesWaitingForExit.size());
 
-    state = SHUTTING_DOWN;
+                {
+                    std::lock_guard stateLock(dataStoreStateMutex);
+                    state = SHUTTING_DOWN;
+                }
 
-    // Signal the destroy worker to exit and wake it up. We join after the
-    // data-collection ULTs have joined so any final destroy enqueued during
-    // shutdown has a chance to be processed.
-    destroyWorkerShouldExit.store(true, std::memory_order_release);
-    destroyCv.notify_all();
+                // Signal the destroy worker to exit and wake it up. We join after the
+                // data-collection ULTs have joined so any final destroy enqueued during
+                // shutdown has a chance to be processed.
+                destroyWorkerShouldExit.store(true, std::memory_order_release);
+                destroyCv.notify_all();
 
-    // Join threads & execution streams while holding stateMutex
-    for(auto& th: dataStoreThreads) { th->join(); }
-    LOG_INFO("[GrapherDataStore] All data collection threads have been joined.");
+                // Join threads & execution streams after publishing state under a short lock
+                for(auto& th: dataStoreThreads) { th->join(); }
+                auto dataStoreThreadsCount = dataStoreThreads.size();
+                dataStoreThreads.clear();
+                nativeHandles_.fetch_sub(dataStoreThreadsCount, std::memory_order_release);
+                LOG_INFO("[GrapherDataStore] All data collection threads have been joined.");
 
-    if(destroyWorkerThread.joinable())
-    {
-        destroyWorkerThread.join();
-        LOG_INFO("[GrapherDataStore] Destroy worker thread has been joined.");
-    }
+                if(destroyWorkerThread.joinable())
+                {
+                    destroyWorkerThread.join();
+                    LOG_INFO("[GrapherDataStore] Destroy worker thread has been joined.");
+                }
 
-    for(auto& es: dataStoreStreams) { es->join(); }
-    LOG_INFO("[GrapherDataStore] All data collection streams have been joined.");
+                for(auto& es: dataStoreStreams) { es->join(); }
+                auto dataStoreStreamsCount = dataStoreStreams.size();
+                dataStoreStreams.clear();
+                nativeHandles_.fetch_sub(dataStoreStreamsCount, std::memory_order_release);
+                LOG_INFO("[GrapherDataStore] All data collection streams have been joined.");
 
-    // Retire all remaining StoryPipelines
-    if(!theMapOfStoryPipelines.empty())
-    {
-        std::lock_guard storeLock(dataStoreMutex);
+                // Retire all remaining StoryPipelines
+                if(!theMapOfStoryPipelines.empty())
+                {
+                    std::lock_guard storeLock(dataStoreMutex);
 
-        chl::StoryPipeline* pipeline = nullptr;
-        std::vector<StoryChunk*> remaining_story_chunks;
-        for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
-            ++pipeline_iter)
-        {
-            pipeline = (*pipeline_iter).second;
-            LOG_INFO("[GrapherDataStore] retiring pipeline StoryId {} timeline {}-{}",
-                     pipeline->getStoryId(),
-                     pipeline->TimelineStart(),
-                     pipeline->TimelineEnd());
-            theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
-            //extract any remaining story chunks
-            pipeline->finalize(remaining_story_chunks);
-            delete pipeline;
-        }
+                    chl::StoryPipeline* pipeline = nullptr;
+                    std::vector<StoryChunk*> remaining_story_chunks;
+                    for(auto pipeline_iter = theMapOfStoryPipelines.begin();
+                        pipeline_iter != theMapOfStoryPipelines.end();
+                        ++pipeline_iter)
+                    {
+                        pipeline = (*pipeline_iter).second;
+                        LOG_INFO("[GrapherDataStore] retiring pipeline StoryId {} timeline {}-{}",
+                                 pipeline->getStoryId(),
+                                 pipeline->TimelineStart(),
+                                 pipeline->TimelineEnd());
+                        theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
+                        //extract any remaining story chunks
+                        pipeline->finalize(remaining_story_chunks);
+                        delete pipeline;
+                    }
 
-        theExtractionQueue.stashStoryChunks(remaining_story_chunks);
-        theMapOfStoryPipelines.clear();
-        pipelinesWaitingForExit.clear();
-    }
-    LOG_INFO("[GrapherDataStore] StoryPipelines are shutdown. CurrentState={}, MapOfStoryPipelines={}, "
-             "PipelinesWaitingForExit={}",
-             state,
-             theMapOfStoryPipelines.size(),
-             pipelinesWaitingForExit.size());
+                    theExtractionQueue.stashStoryChunks(remaining_story_chunks);
+                    theMapOfStoryPipelines.clear();
+                    pipelinesWaitingForExit.clear();
+                }
+                LOG_INFO("[GrapherDataStore] StoryPipelines are shutdown. CurrentState={}, MapOfStoryPipelines={}, "
+                         "PipelinesWaitingForExit={}",
+                         state.load(),
+                         theMapOfStoryPipelines.size(),
+                         pipelinesWaitingForExit.size());
 
-    LOG_INFO("[GrapherDataStore] DataCollection shutdown completed.");
+                LOG_INFO("[GrapherDataStore] DataCollection shutdown completed.");
+            });
 }
 
 ///////////////////////

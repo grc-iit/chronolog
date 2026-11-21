@@ -1,3 +1,6 @@
+// Legacy embedding example: unsupported by the ChronoLog-owned native runtime.
+// Connect no longer attaches main to Argobots; independent ABT_init/finalize
+// and ABT_xstream_self on main must not be used with this client contract.
 #include <atomic>
 #include <cassert>
 #include <cstdlib>

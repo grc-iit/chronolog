@@ -1,3 +1,4 @@
+#include <ClientConfiguration.h>
 #include <ConfigurationBlocks.h>
 
 
@@ -403,6 +404,16 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
             }
             watermark_report_interval_secs = parsed_report_secs;
         }
+        else if(strcmp(key, "duplicate_receipt_hold_secs") == 0)
+        {
+            if(!json_object_is_type(val, json_type_int) || json_object_get_int(val) < 0)
+            {
+                std::cerr << "[DataStoreConf] Invalid 'duplicate_receipt_hold_secs': expected an integer of 0 or more"
+                          << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            duplicate_receipt_hold_secs = json_object_get_int(val);
+        }
         else
         {
             std::cerr << "[DataStoreConf] Unknown DataStoreInternals configuration: " << key << std::endl;
@@ -414,3 +425,10 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
 }
 
 ///////////////////
+
+int chronolog::parseRpcPolicyConf(json_object* object, RpcTimeoutPolicy& policy) noexcept
+{
+    if(parseRpcTimeoutPolicy(object, policy) != CL_SUCCESS)
+        return CL_ERR_INVALID_CONF;
+    return CL_SUCCESS;
+}

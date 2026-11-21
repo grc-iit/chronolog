@@ -45,6 +45,7 @@ CONF_TEMPLATE="$WORK_DIR/conf/default-chrono-conf.json"
 CLIENT_CONF="$WORK_DIR/conf/default-chrono-client-conf.json"
 DEPLOY="$WORK_DIR/tools/deploy/deploy_local.sh"
 TAIL_EXAMPLE="$BUILD_DIR/client/cpp/examples/chrono-client-example-tail-reader"
+WRITE_PROBE="$BUILD_DIR/tests/integration/watermark-replay/chronolog-test-exact-split-probe"
 
 # grapher windows patched small so the whole loop closes quickly
 G_CHUNK_SECS=10
@@ -70,7 +71,9 @@ kill_daemons() {
     done
 }
 
+paused_keeper_pid=""
 cleanup() {
+    if [ -n "$paused_keeper_pid" ]; then kill -CONT "$paused_keeper_pid" 2>/dev/null || true; fi
     "$DEPLOY" -s -w "$WORK_DIR" > /dev/null 2>&1
     kill_daemons
 }
@@ -135,6 +138,7 @@ h5_story_events() { # total events across the TailChronicle/TailStory files
 say "patching installed conf template (keeper tail_capacity=1, resend=${RESEND_SECS}s; grapher ${G_CHUNK_SECS}s/${G_ACCEPT_SECS}s windows)"
 command -v jq >/dev/null || { say "jq not found"; exit 2; }
 [ -x "$TAIL_EXAMPLE" ] || { say "tail-reader example not found at $TAIL_EXAMPLE"; exit 2; }
+[ -x "$WRITE_PROBE" ] || { say "held writer probe not found at $WRITE_PROBE"; exit 2; }
 [ -x "$H5DUMP" ] || { say "h5dump not found at $H5DUMP"; exit 2; }
 
 # jq writes to a side file that replaces the template only on success, so a failed
@@ -250,6 +254,61 @@ if [ "$h5_events" -ge 90 ]; then
     ok "durability: $h5_events event(s) on disk for TailStory (>= 90 written; duplicates allowed)"
 else
     bad "durability: only $h5_events event(s) on disk for TailStory, 90 were written across three runs"
+fi
+
+# ------------------------------------------ scenario 4: stopped report target ----
+# Hold a write-only client after 30 acknowledged appends, then stop one keeper.
+# The original tail example also polls a paused Keeper: its late sequence reply
+# currently throws HG_NOENTRY and aborts the daemon. That separate response-
+# containment defect remains a lifecycle regression; do not hide the failed run.
+# Here no playback/metadata request runs while the report target is paused.
+say "scenario 4: SIGSTOP one keeper, then restore it and verify reports + archive"
+paused_keeper_pid=$(pgrep -f "$WORK_DIR/bin/chrono-keeper" | head -1)
+[ -n "$paused_keeper_pid" ] || { bad "report target: no keeper pid"; exit 1; }
+writer_artifacts=$(mktemp -d "${TMPDIR:-/tmp}/wmark_report_target.XXXXXX")
+writer_output="$writer_artifacts/writer.log"
+"$WRITE_PROBE" --config "$CLIENT_CONF" write TailChronicle TailStory 30 75 > "$writer_output" 2>&1 &
+example_pid=$!
+# WRITTEN uses std::endl in the probe. This barrier follows every acknowledged
+# append and is independent of the daemon logs' delayed flush.
+written_deadline=$((SECONDS + 30))
+while ! grep -q '^WRITTEN$' "$writer_output" && kill -0 "$example_pid" 2>/dev/null && [ $SECONDS -lt $written_deadline ]; do
+    sleep 1
+done
+if ! grep -q '^WRITTEN$' "$writer_output" || [ "$(grep -c '^WROTE [1-9][0-9]*$' "$writer_output")" -ne 30 ]; then
+    bad "report target: writer did not acknowledge 30 events; see $writer_output"
+    exit 1
+fi
+say "report target: 30 appends acknowledged; transcript $writer_output"
+kill -STOP "$paused_keeper_pid" || { bad "report target: keeper could not be stopped"; exit 1; }
+sleep 45
+kill -CONT "$paused_keeper_pid" || { bad "report target: keeper could not be resumed"; exit 1; }
+paused_keeper_pid=""
+wait "$example_pid" || { bad "report target: held writer failed; see $writer_output"; exit 1; }
+if wait_freed_but_tail $((RESEND_SECS + FREE_DEADLINE + 30)); then
+    ok "report target: every chunk below each keeper's tail freed after restoration"
+else
+    bad "report target: chunks below the tail remain after restoration"
+fi
+
+deadline=$((SECONDS + RESEND_SECS + FREE_DEADLINE + 30))
+h5_events=$(h5_story_events)
+while [ "$h5_events" -lt 120 ] && [ $SECONDS -lt $deadline ]; do
+    sleep 5
+    h5_events=$(h5_story_events)
+done
+if [ "$h5_events" -ge 120 ]; then
+    ok "report target durability: $h5_events archive events (>= 120 written across four runs)"
+else
+    bad "report target durability: only $h5_events archive events; 120 were written"
+fi
+premature=$(grep -h "\[KeeperChunkRetentionStore\] freeing StoryId" "$MONITOR_DIR"/chrono-keeper-*.log 2>/dev/null |
+    sed -n 's/.*chunk [0-9]*-\([0-9]*\) eventCount.*(W=\([0-9]*\) covers it).*/\1 \2/p' |
+    awk '$2 < $1 { count++ } END { print count + 0 }')
+if [ "${premature:-0}" -eq 0 ]; then
+    ok "all outage cases: every freed chunk's W >= its end time"
+else
+    bad "all outage cases: $premature chunks freed before W covered them"
 fi
 
 # ------------------------------------------------------------------ report ----

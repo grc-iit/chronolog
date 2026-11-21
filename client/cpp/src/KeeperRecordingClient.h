@@ -4,9 +4,13 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cstdint>
+#include <deque>
+#include "ClientRpcContext.h"
+#include <RpcFanout.h>
 #include <iostream>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
@@ -24,26 +28,20 @@ namespace tl = thallium;
 namespace chronolog
 {
 
-// How one record_event_durable attempt ended. Only Answered carries a keeper
-// code; the caller retries TimedOut and TransportError with the same event.
-enum class DurableSendOutcome
-{
-    Answered,      // the keeper answered; keeper_code holds its status
-    TimedOut,      // no answer within the attempt's deadline
-    NotRegistered, // the keeper does not define record_event_durable (a 3.3.0 keeper), or is
-                   // dead and never answered this client
-    TransportError // any other RPC failure
-};
 
 class KeeperRecordingClient
 {
 
 public:
-    static KeeperRecordingClient* CreateKeeperRecordingClient(tl::engine& tl_engine, ServiceId const& keeper_service_id)
+    static KeeperRecordingClient* CreateKeeperRecordingClient(tl::engine& tl_engine,
+                                                              ServiceId const& keeper_service_id,
+                                                              std::shared_ptr<ClientRpcProcedures> procedures)
     {
+        if(!procedures)
+            return nullptr;
         try
         {
-            return new KeeperRecordingClient(tl_engine, keeper_service_id);
+            return new KeeperRecordingClient(tl_engine, keeper_service_id, std::move(procedures));
         }
         catch(tl::exception const& ex)
         {
@@ -52,164 +50,424 @@ public:
         return nullptr;
     }
 
-    int send_event_msg(LogEvent const& eventMsg)
+    // Installed before calls by private tests; owned continuations retain the
+    // observers. They do not replace the native call or its lifetime owner.
+    struct AppendObservers
     {
-        try
-        {
-            //std::stringstream ss;
-            //ss << eventMsg;
-            //LOG_TRACE("[KeeperRecordingClient] Sending event message: {}", ss.str());
-            int return_code = record_event.on(service_ph)(eventMsg);
-            //LOG_TRACE("[KeeperRecordingClient] Sent event message: {} with return code: {}", ss.str(), return_code);
-            return return_code;
-        }
-        catch(thallium::exception const& ex)
-        {
-            LOG_ERROR("[KeeperRecordingClient] Failed to send event message to {} exception: {}",
-                      to_string(recordingServiceId),
-                      ex.what());
-        }
-        return (chronolog::CL_ERR_UNKNOWN);
-    }
-
-    // One attempt of a durable write: record_event_durable with a deadline of
-    // timeout_ms. A keeper that lacks the RPC answers the forward with
-    // HG_NO_MATCH, which thallium raises as a margo_exception; that maps to
-    // NotRegistered, so the caller does not retry a call that cannot work.
-    // HG_NO_MATCH is HG_NOENTRY, which a forward to a dead keeper also gets
-    // over ofi+sockets. Once this keeper has answered record_event_durable, it
-    // defines the RPC, so HG_NO_MATCH from it is a TransportError. Before
-    // that, keeperIsAlive tells the two apart: a keeper that answers
-    // tail_get_sequences, which v3.3.0 keepers also define, is up and lacks
-    // the RPC; one that does not is down, and the caller retries and may reach
-    // it restarted at the same address.
-    DurableSendOutcome send_durable_event_msg(ChronicleName const& chronicle,
-                                              StoryName const& story,
-                                              LogEvent const& eventMsg,
-                                              uint32_t timeout_ms,
-                                              int& keeper_code)
+        std::function<void()> beforeLookup, afterLookup, beforeDispatch, afterNative;
+    };
+    class AppendRequest
     {
-        try
+    public:
+        AppendRequest(tl::engine& engine,
+                      ServiceId route,
+                      std::shared_ptr<ClientRpcProcedures> procedures,
+                      std::shared_ptr<AppendObservers const> observers)
+            : engine_(engine)
+            , route_(std::move(route))
+            , procedures_(std::move(procedures))
+            , observers_(std::move(observers))
+        {}
+        rpc::RpcResult<int> send_event_msg(rpc::OperationContext& operation, LogEvent const& event, uint64_t attemptMs)
         {
-            keeper_code = record_event_durable.on(service_ph)
-                                  .timed(std::chrono::milliseconds(timeout_ms), chronicle, story, eventMsg);
-            answeredDurable = true;
-            return DurableSendOutcome::Answered;
-        }
-        catch(tl::timeout const&)
-        {
-            LOG_WARNING("[KeeperRecordingClient] Durable event to {} timed out after {} ms",
-                        to_string(recordingServiceId),
-                        timeout_ms);
-            return DurableSendOutcome::TimedOut;
-        }
-        catch(tl::margo_exception const& ex)
-        {
-            if(ex.error() == HG_NO_MATCH && !answeredDurable && keeperIsAlive(timeout_ms))
+            try
             {
-                LOG_ERROR("[KeeperRecordingClient] Keeper {} does not define record_event_durable",
-                          to_string(recordingServiceId));
-                return DurableSendOutcome::NotRegistered;
+                if(observers_ && observers_->beforeLookup)
+                    observers_->beforeLookup();
+                if(operation.deadline().expired())
+                    return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+                auto binding = procedures_->provision(ClientRpcProcedures::RecordEvent,
+                                                      route_.getProviderId(),
+                                                      operation.deadline());
+                if(binding != CL_SUCCESS)
+                    return {binding, false, std::nullopt};
+                std::string address;
+                route_.get_service_as_string(address);
+                endpoint_.emplace(engine_.lookup(address));
+                if(observers_ && observers_->afterLookup)
+                    observers_->afterLookup();
+                peer_.emplace(*endpoint_, route_.getProviderId());
+                call_.emplace(procedures_->calls[ClientRpcProcedures::RecordEvent].on(*peer_));
+                if(observers_ && observers_->beforeDispatch)
+                    observers_->beforeDispatch();
+                auto timeout = operation.deadline().cappedAttempt(std::chrono::milliseconds(attemptMs));
+                if(!timeout || !operation.tryBeginDispatch())
+                    return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+                rpc::RpcResult<int> result{CL_ERR_OUTCOME_UNCONFIRMED, true, std::nullopt};
+                try
+                {
+                    result.reply = call_->timed(*timeout, event);
+                    result.status = CL_SUCCESS;
+                }
+                catch(...)
+                {}
+                // The timed forward has returned, so Mercury is done with it.
+                // An unanswered append gives its slot back and still reports
+                // CL_ERR_OUTCOME_UNCONFIRMED.
+                operation.markNativeSettled();
+                if(observers_ && observers_->afterNative)
+                    observers_->afterNative();
+                return result;
             }
-            LOG_ERROR("[KeeperRecordingClient] Failed to send durable event to {} exception: {}",
-                      to_string(recordingServiceId),
-                      ex.what());
+            catch(...)
+            {
+                return {operation.deadline().expired() ? CL_ERR_DEADLINE_EXCEEDED : CL_ERR_UNKNOWN,
+                        false,
+                        std::nullopt};
+            }
         }
-        catch(tl::exception const& ex)
-        {
-            LOG_ERROR("[KeeperRecordingClient] Failed to send durable event to {} exception: {}",
-                      to_string(recordingServiceId),
-                      ex.what());
-        }
-        return DurableSendOutcome::TransportError;
+
+    private:
+        tl::engine& engine_;
+        ServiceId route_;
+        std::shared_ptr<ClientRpcProcedures> procedures_;
+        std::shared_ptr<AppendObservers const> observers_;
+        std::optional<tl::endpoint> endpoint_;
+        std::optional<tl::provider_handle> peer_;
+        using Call = decltype(std::declval<tl::remote_procedure>().on(std::declval<tl::provider_handle>()));
+        std::optional<Call> call_;
+    };
+    std::unique_ptr<AppendRequest> prepareAppend()
+    {
+        return std::make_unique<AppendRequest>(engine_, recordingServiceId, procedures_, appendObservers_);
     }
 
-    // Whether the keeper answers an RPC that every keeper since 3.1 defines: a
-    // tail read of no events of no story, which changes nothing there. Waits
-    // at most timeout_ms, and no more than kTailReadRpcTimeoutMs.
-    bool keeperIsAlive(uint32_t timeout_ms)
+    // A durable write: record_event_durable, sent again with the identical
+    // event after an attempt that got no answer, up to `attempts` times, all
+    // within the operation's deadline. The keeper stores an event identity at
+    // most once, so the resend cannot create a second copy. It runs as one
+    // owned job on one runtime slot, so a keeper that stopped answering costs
+    // that slot, not one per attempt. Every attempt goes to this keeper: the
+    // story's keeper list is read only by the caller, before submission.
+    //
+    // A keeper that lacks the RPC answers the forward with HG_NO_MATCH. That
+    // is also HG_NOENTRY, which a forward to a dead keeper gets over
+    // ofi+sockets. Once this keeper has answered record_event_durable it
+    // defines the RPC, so HG_NO_MATCH from it is a transport error. Before
+    // that, an answer to tail_get_sequences, which v3.3.0 keepers also
+    // define, shows it is up and lacks the RPC; no answer means it is down
+    // and the next attempt may reach it restarted at the same address.
+    class DurableRequest
     {
-        auto const deadline =
-                std::chrono::milliseconds(std::min<uint32_t>(timeout_ms, static_cast<uint32_t>(kTailReadRpcTimeoutMs)));
-        try
+    public:
+        DurableRequest(tl::engine& engine,
+                       ServiceId route,
+                       std::shared_ptr<ClientRpcProcedures> procedures,
+                       std::shared_ptr<std::atomic<bool>> answered)
+            : engine_(engine)
+            , route_(std::move(route))
+            , procedures_(std::move(procedures))
+            , answered_(std::move(answered))
+        {}
+        // A reply carries the final durable status. No reply with
+        // may_have_dispatched set means an attempt went unanswered and nothing
+        // later ruled out that it stored the event.
+        rpc::RpcResult<int> send(rpc::OperationContext& operation,
+                                 ChronicleName const& chronicle,
+                                 StoryName const& story,
+                                 LogEvent const& event,
+                                 uint32_t timeoutMs,
+                                 uint32_t attempts)
         {
-            std::vector<EventSequence> const none =
-                    tail_get_sequences.on(service_ph).timed(deadline, StoryId(0), uint64_t(0));
-            (void)none;
-            return true;
+            bool mayBeStored = false;
+            for(uint32_t attempt = 1; attempt <= attempts; ++attempt)
+            {
+                auto started = rpc::RpcDeadline::Clock::now();
+                int code = CL_ERR_UNKNOWN;
+                switch(sendOnce(operation, chronicle, story, event, timeoutMs, code))
+                {
+                    case Outcome::Answered:
+                        if(mayBeStored && (code == CL_ERR_DURABILITY_UNAVAILABLE || code == CL_ERR_DURABILITY_FULL))
+                            code = CL_ERR_DURABILITY_UNKNOWN;
+                        return {CL_SUCCESS, true, code};
+                    case Outcome::NotRegistered:
+                        // Nothing stored here, but an earlier unanswered
+                        // attempt may have reached a keeper that stored it.
+                        if(!mayBeStored)
+                            return {CL_SUCCESS, true, CL_ERR_DURABILITY_UNAVAILABLE};
+                        return {CL_ERR_OUTCOME_UNCONFIRMED, true, std::nullopt};
+                    case Outcome::NotSent:
+                        if(mayBeStored)
+                            return {CL_ERR_OUTCOME_UNCONFIRMED, true, std::nullopt};
+                        return {code, false, std::nullopt};
+                    case Outcome::TimedOut:
+                        mayBeStored = true;
+                        break;
+                    case Outcome::TransportError:
+                        mayBeStored = true;
+                        // A forward to a dead keeper fails at once over
+                        // ofi+sockets. Each attempt takes timeoutMs, as one
+                        // that times out does, so the attempts span the time
+                        // a restarted keeper needs to come back.
+                        if(attempt < attempts)
+                            std::this_thread::sleep_until(std::min(started + std::chrono::milliseconds(timeoutMs),
+                                                                   operation.deadline().expiresAt()));
+                        break;
+                }
+                LOG_WARNING("[KeeperRecordingClient] Durable event attempt {} of {} to {} got no answer",
+                            attempt,
+                            attempts,
+                            to_string(route_));
+            }
+            return {CL_ERR_OUTCOME_UNCONFIRMED, true, std::nullopt};
         }
-        catch(tl::exception const& ex)
+
+    private:
+        enum class Outcome
         {
-            LOG_WARNING("[KeeperRecordingClient] Keeper {} does not answer: {}",
-                        to_string(recordingServiceId),
-                        ex.what());
+            Answered,      // code holds the keeper's status
+            NotRegistered, // the keeper is up and does not define record_event_durable
+            NotSent,       // no forward left this client; code holds why
+            TimedOut,      // no answer within the attempt's deadline
+            TransportError // any other RPC failure after dispatch
+        };
+        Outcome sendOnce(rpc::OperationContext& operation,
+                         ChronicleName const& chronicle,
+                         StoryName const& story,
+                         LogEvent const& event,
+                         uint32_t timeoutMs,
+                         int& code)
+        {
+            std::optional<std::chrono::milliseconds> timeout;
+            try
+            {
+                if(operation.deadline().expired())
+                {
+                    code = CL_ERR_DEADLINE_EXCEEDED;
+                    return Outcome::NotSent;
+                }
+                code = procedures_->provision(ClientRpcProcedures::RecordEventDurable,
+                                              route_.getProviderId(),
+                                              operation.deadline());
+                if(code != CL_SUCCESS)
+                    return Outcome::NotSent;
+                if(!peer_)
+                {
+                    std::string address;
+                    route_.get_service_as_string(address);
+                    endpoint_.emplace(engine_.lookup(address));
+                    peer_.emplace(*endpoint_, route_.getProviderId());
+                }
+                // Each attempt's callable is kept until the job is released.
+                calls_.push_back(procedures_->calls[ClientRpcProcedures::RecordEventDurable].on(*peer_));
+                timeout = operation.deadline().cappedAttempt(std::chrono::milliseconds(timeoutMs));
+                if(!timeout || !operation.tryBeginDispatch())
+                {
+                    code = CL_ERR_DEADLINE_EXCEEDED;
+                    return Outcome::NotSent;
+                }
+            }
+            catch(...)
+            {
+                code = operation.deadline().expired() ? CL_ERR_DEADLINE_EXCEEDED : CL_ERR_UNKNOWN;
+                return Outcome::NotSent;
+            }
+            try
+            {
+                // Leaving this block, by return or exception, means the timed
+                // forward has returned and Mercury is done with it.
+                rpc::SettledOnExit settled{operation};
+                code = calls_.back().timed(*timeout, chronicle, story, event);
+                answered_->store(true, std::memory_order_release);
+                return Outcome::Answered;
+            }
+            catch(tl::timeout const&)
+            {
+                return Outcome::TimedOut;
+            }
+            catch(tl::margo_exception const& ex)
+            {
+                if(ex.error() == HG_NO_MATCH && !answered_->load(std::memory_order_acquire) &&
+                   keeperAnswers(operation, timeoutMs))
+                {
+                    LOG_ERROR("[KeeperRecordingClient] Keeper {} does not define record_event_durable",
+                              to_string(route_));
+                    return Outcome::NotRegistered;
+                }
+            }
+            catch(...)
+            {}
+            return Outcome::TransportError;
         }
-        return false;
+        // A tail read of no events of no story, which changes nothing on the
+        // keeper. Waits at most the smaller of timeoutMs and 5 s, within the
+        // operation's deadline.
+        bool keeperAnswers(rpc::OperationContext& operation, uint32_t timeoutMs)
+        {
+            try
+            {
+                if(procedures_->provision(ClientRpcProcedures::TailSequences,
+                                          route_.getProviderId(),
+                                          operation.deadline()) != CL_SUCCESS)
+                    return false;
+                probes_.push_back(procedures_->calls[ClientRpcProcedures::TailSequences].on(*peer_));
+                auto timeout = operation.deadline().cappedAttempt(
+                        std::chrono::milliseconds(std::min<uint32_t>(timeoutMs, kAliveProbeMs)));
+                if(!timeout || !operation.tryBeginDispatch())
+                    return false;
+                rpc::SettledOnExit settled{operation};
+                std::vector<EventSequence> none = probes_.back().timed(*timeout, StoryId(0), size_t(0));
+                return true;
+            }
+            catch(...)
+            {}
+            return false;
+        }
+        static constexpr uint32_t kAliveProbeMs = 5000;
+        tl::engine& engine_;
+        ServiceId route_;
+        std::shared_ptr<ClientRpcProcedures> procedures_;
+        std::shared_ptr<std::atomic<bool>> answered_;
+        std::optional<tl::endpoint> endpoint_;
+        std::optional<tl::provider_handle> peer_;
+        using Call = decltype(std::declval<tl::remote_procedure>().on(std::declval<tl::provider_handle>()));
+        // A deque never moves the calls already made.
+        std::deque<Call> calls_;
+        std::deque<Call> probes_;
+    };
+    std::unique_ptr<DurableRequest> prepareDurable()
+    {
+        return std::make_unique<DurableRequest>(engine_, recordingServiceId, procedures_, answeredDurable_);
     }
 
     ServiceId const& getRecordingServiceId() const { return recordingServiceId; }
 
-    // Per-RPC deadline (ms) for tail reads so a slow or hung keeper cannot block
-    // playback() indefinitely. Tail reads are served from the keeper's in-memory
-    // tail and normally return in well under a second; this is a generous ceiling
-    // (a hung keeper never responds, so any finite bound achieves the goal).
-    static constexpr int kTailReadRpcTimeoutMs = 5000;
-
-    // Tail-read phase 1 (async): issue tail_get_sequences without blocking and
-    // return a handle to wait on. Lets a caller fan out to all of a story's
-    // keepers concurrently so one slow/hung keeper cannot serialize the rest.
-    // wait() yields the sequences, or throws thallium::timeout after
-    // kTailReadRpcTimeoutMs (see gather_story_tail).
-    tl::async_response getTailSequencesAsync(StoryId const& story_id, uint64_t n)
+    // Each retained child has at most one native request at a time. Lookup,
+    // serialization, wait and native destruction all run on its charged worker.
+    class TailRequest
     {
-        return tail_get_sequences.on(service_ph)
-                .timed_async(std::chrono::milliseconds(kTailReadRpcTimeoutMs), story_id, n);
+    public:
+        TailRequest(tl::engine& engine, ServiceId route, std::shared_ptr<ClientRpcProcedures> procedures)
+            : engine_(engine)
+            , route_(std::move(route))
+            , procedures_(std::move(procedures))
+        {}
+        rpc::RpcResult<std::vector<EventSequence>> sequences(rpc::OperationContext& operation,
+                                                             StoryId story,
+                                                             size_t n,
+                                                             uint64_t cap,
+                                                             rpc::FanoutIssueBarrier& issued)
+        {
+            return call<std::vector<EventSequence>>(operation,
+                                                    ClientRpcProcedures::TailSequences,
+                                                    cap,
+                                                    issued,
+                                                    story,
+                                                    n);
+        }
+        rpc::RpcResult<std::vector<LogEvent>> events(rpc::OperationContext& operation,
+                                                     StoryId story,
+                                                     std::vector<EventSequence> const& sequences,
+                                                     uint64_t cap,
+                                                     rpc::FanoutIssueBarrier& issued)
+        {
+            return call<std::vector<LogEvent>>(operation,
+                                               ClientRpcProcedures::TailEvents,
+                                               cap,
+                                               issued,
+                                               story,
+                                               sequences);
+        }
+
+        bool timedOut() const noexcept { return timedOut_; }
+
+    private:
+        template <class Reply, class... Args>
+        rpc::RpcResult<Reply> call(rpc::OperationContext& operation,
+                                   ClientRpcProcedures::Name name,
+                                   uint64_t cap,
+                                   rpc::FanoutIssueBarrier& issued,
+                                   Args const&... args)
+        {
+            timedOut_ = false;
+            bool dispatched = false, arrived = false;
+            struct Arrival
+            {
+                rpc::FanoutIssueBarrier& barrier;
+                rpc::RpcDeadline const& deadline;
+                bool& arrived;
+                ~Arrival()
+                {
+                    if(!arrived)
+                        barrier.arriveAndWait(deadline);
+                }
+            } arrival{issued, operation.deadline(), arrived};
+            try
+            {
+                if(operation.deadline().expired())
+                    return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+                auto binding = procedures_->provision(name, route_.getProviderId(), operation.deadline());
+                if(binding != CL_SUCCESS)
+                    return {binding, false, std::nullopt};
+                if(!peer_)
+                {
+                    std::string address;
+                    route_.get_service_as_string(address);
+                    endpoint_.emplace(engine_.lookup(address));
+                    peer_.emplace(*endpoint_, route_.getProviderId());
+                }
+                call_.emplace(procedures_->calls[name].on(*peer_));
+                auto timeout = operation.deadline().cappedAttempt(std::chrono::milliseconds(cap));
+                if(!timeout || !operation.tryBeginDispatch())
+                    return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+                dispatched = true;
+                // Nothing between the issue and wait() throws, so leaving this
+                // scope means wait() has returned and Mercury is done with it.
+                rpc::SettledOnExit settled{operation};
+                pending_.emplace(call_->timed_async(*timeout, args...));
+                arrived = true;
+                issued.arriveAndWait(operation.deadline());
+                Reply reply = pending_->wait();
+                pending_.reset();
+                call_.reset();
+                return {CL_SUCCESS, true, std::move(reply)};
+            }
+            catch(tl::timeout const&)
+            {
+                // Preserve the caller-visible cause independently of native
+                // settlement.
+                timedOut_ = true;
+                return {dispatched ? CL_ERR_OUTCOME_UNCONFIRMED : CL_ERR_UNKNOWN, dispatched, std::nullopt};
+            }
+            catch(...)
+            {
+                return {dispatched ? CL_ERR_OUTCOME_UNCONFIRMED : CL_ERR_UNKNOWN, dispatched, std::nullopt};
+            }
+        }
+        tl::engine& engine_;
+        ServiceId route_;
+        std::shared_ptr<ClientRpcProcedures> procedures_;
+        std::optional<tl::endpoint> endpoint_;
+        std::optional<tl::provider_handle> peer_;
+        using Call = decltype(std::declval<tl::remote_procedure>().on(std::declval<tl::provider_handle>()));
+        std::optional<Call> call_;
+        std::optional<tl::async_response> pending_;
+        bool timedOut_ = false;
+    };
+    std::unique_ptr<TailRequest> prepareTail()
+    {
+        return std::make_unique<TailRequest>(engine_, recordingServiceId, procedures_);
     }
 
-    // Tail-read phase 2 (async): issue tail_get_events without blocking and return
-    // a handle to wait on, so payloads can be fetched from all of a story's
-    // keepers concurrently. wait() yields the payloads, or throws
-    // thallium::timeout after kTailReadRpcTimeoutMs. `seqs` must stay alive until
-    // the returned handle is waited on.
-    tl::async_response getTailEventsAsync(StoryId const& story_id, std::vector<EventSequence> const& seqs)
-    {
-        return tail_get_events.on(service_ph)
-                .timed_async(std::chrono::milliseconds(kTailReadRpcTimeoutMs), story_id, seqs);
-    }
-
-    // No deregister(): every KeeperRecordingClient on this engine defines the same
-    // RPC names and so shares their IDs. Deregistering them here took them away
-    // from the clients of the other keepers (#743); engine finalize releases them.
-    ~KeeperRecordingClient()
-    {
-        LOG_DEBUG("[KeeperRecordingClient] Destructor called {}", to_string(recordingServiceId));
-    }
+    ~KeeperRecordingClient() = default;
 
 private:
+    friend struct KeeperRecordingClientTestAccess;
+    tl::engine& engine_;
+    std::shared_ptr<AppendObservers const> appendObservers_;
+    std::shared_ptr<ClientRpcProcedures> procedures_;
     ServiceId recordingServiceId;
-    tl::provider_handle service_ph; //provider_handle for remote registry service
-    tl::remote_procedure record_event;
-    tl::remote_procedure record_event_durable;
-    tl::remote_procedure tail_get_sequences;
-    tl::remote_procedure tail_get_events;
-    // set by the first answer to record_event_durable; never cleared
-    std::atomic<bool> answeredDurable{false};
+    // Set by the first answer to record_event_durable; never cleared.
+    std::shared_ptr<std::atomic<bool>> answeredDurable_ = std::make_shared<std::atomic<bool>>(false);
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    KeeperRecordingClient(tl::engine& tl_engine, ServiceId const& keeper_service_id)
-        : recordingServiceId(keeper_service_id)
-    {
-        LOG_DEBUG("[KeeperRecordingClient] KeeperRecordingiClient Constructor for {}", to_string(keeper_service_id));
-        std::string service_addr_string;
-        recordingServiceId.get_service_as_string(service_addr_string);
-
-        service_ph = tl::provider_handle(tl_engine.lookup(service_addr_string), recordingServiceId.getProviderId());
-
-        record_event = tl_engine.define("record_event");
-        record_event_durable = tl_engine.define("record_event_durable");
-        tail_get_sequences = tl_engine.define("tail_get_sequences");
-        tail_get_events = tl_engine.define("tail_get_events");
-    }
+    KeeperRecordingClient(tl::engine& tl_engine,
+                          ServiceId const& keeper_service_id,
+                          std::shared_ptr<ClientRpcProcedures> procedures)
+        : engine_(tl_engine)
+        , procedures_(std::move(procedures))
+        , recordingServiceId(keeper_service_id)
+    {}
 
 
     KeeperRecordingClient() = delete;

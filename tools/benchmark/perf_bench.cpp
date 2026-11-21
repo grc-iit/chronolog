@@ -363,9 +363,7 @@ static int test_replay_story(chronolog::Client& client,
 static int
 test_release_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
-    int ret = client.ReleaseStory(chronicle_name, story_name);
-    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST);
-    return ret;
+    return client.ReleaseStory(chronicle_name, story_name);
 }
 
 static int test_destroy_chronicle(chronolog::Client& client, const std::string& chronicle_name)
@@ -518,11 +516,12 @@ static uint64_t write_event(chronolog::StoryHandle* story_handle,
     }
     else
     {
-        // log_event() answers the event time, or 0 when the write failed;
-        // counted, not asserted, so a failure does not abort the rank
-        event_time = story_handle->log_event(event_payload);
-        if(event_time == 0)
-            rc = chronolog::CL_ERR_UNKNOWN;
+        // append_event() is log_event() with the failure's code; counted,
+        // not asserted, so a failure does not abort the rank
+        auto const result = story_handle->append_event(event_payload);
+        rc = result.status;
+        if(rc == chronolog::CL_SUCCESS)
+            event_time = result.timestamp;
     }
     uint64_t t_end = now_ns();
 
@@ -975,7 +974,7 @@ int main(int argc, char** argv)
 
     if(result == 1)
     {
-        exit(EXIT_FAILURE);
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
 
     if(workload_args.latency_test)
@@ -1024,7 +1023,13 @@ int main(int argc, char** argv)
 
     std::string username = getpwuid(getuid())->pw_name;
     ret_i = connectTimer.timeBlock(&chronolog::Client::Connect, client);
-    assert(ret_i == chronolog::CL_SUCCESS);
+    if(ret_i != chronolog::CL_SUCCESS)
+    {
+        std::cerr << "Rank " << rank << " failed to connect to " << server_address
+                  << ", ret: " << chronolog::to_string_client(ret_i) << " (" << ret_i << ")" << std::endl;
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+        return EXIT_FAILURE;
+    }
 
     if(rank == 0)
     {
@@ -1066,11 +1071,13 @@ int main(int argc, char** argv)
                 auto ret = acquireStoryTimer.timeBlock(test_acquire_story, client, chronicle_name, story_name);
                 ret_i = ret.first;
                 story_handle = ret.second;
+                // MPI_Abort, not exit(): the other ranks wait in the next
+                // barrier and would otherwise hang until killed.
                 if((workload_args.write || workload_args.latency_test) && ret_i != chronolog::CL_SUCCESS)
                 {
                     std::cerr << "Failed to acquire story: " << story_name << " in Chronicle: " << chronicle_name
                               << ", ret: " << chronolog::to_string_client(ret_i) << std::endl;
-                    exit(EXIT_FAILURE);
+                    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
                 }
                 else if(workload_args.read && ret_i == chronolog::CL_ERR_NOT_EXIST)
                 {
@@ -1079,7 +1086,7 @@ int main(int argc, char** argv)
                     std::cout << "Please make sure a write test with the same configuration is executed before the "
                                  "read test."
                               << std::endl;
-                    exit(EXIT_FAILURE);
+                    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
                 }
                 if(workload_args.barrier)
                     MPI_Barrier(MPI_COMM_WORLD);
@@ -1242,6 +1249,19 @@ int main(int argc, char** argv)
 
                 // release story test
                 ret_i = releaseStoryTimer.timeBlock(test_release_story, client, chronicle_name, story_name);
+                // Name the failure and this rank's write answers before
+                // aborting; MPI_Abort, as for a failed acquire, so the other
+                // ranks do not wait in a collective
+                if(ret_i != chronolog::CL_SUCCESS && ret_i != chronolog::CL_ERR_NOT_EXIST)
+                {
+                    std::cerr << "Rank " << rank << ": failed to release story: " << story_name
+                              << " in Chronicle: " << chronicle_name << ", ret: " << chronolog::to_string_client(ret_i)
+                              << "; this rank's write answers:";
+                    for(auto const& [code, count]: dur_stats.return_codes)
+                        std::cerr << " " << chronolog::to_string_client(code) << " x" << count;
+                    std::cerr << std::endl;
+                    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+                }
                 if(workload_args.barrier)
                     MPI_Barrier(MPI_COMM_WORLD);
 

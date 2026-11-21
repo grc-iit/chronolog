@@ -13,8 +13,17 @@ int chronolog::VisorConfiguration::parseJsonConf(json_object* json_conf)
         return chl::CL_ERR_INVALID_CONF;
     }
 
+    RpcTimeoutPolicy policy;
+    json_object* policy_object = nullptr;
+    if(json_object_object_get_ex(json_conf, "RpcPolicy", &policy_object) &&
+       parseRpcPolicyConf(policy_object, policy) != chl::CL_SUCCESS)
+        return chl::CL_ERR_INVALID_CONF;
+    RPC_POLICY = policy;
+
     json_object_object_foreach(json_conf, key, val)
     {
+        if(strcmp(key, "RpcPolicy") == 0)
+            continue;
         if(strcmp(key, "VisorClientPortalService") == 0)
         {
             if(!json_object_is_type(val, json_type_object))
@@ -85,6 +94,18 @@ int chronolog::VisorConfiguration::parseJsonConf(json_object* json_conf)
             int delayed_exit_value = json_object_get_int(val);
             DELAYED_DATA_ADMIN_EXIT_IN_SECS =
                     ((0 < delayed_exit_value && delayed_exit_value < 60) ? delayed_exit_value : 5);
+        }
+        else if(strcmp(key, "rpc_slots") == 0)
+        {
+            // Refused rather than clamped: a wrong value would either starve
+            // every acquire of a large recording group or start many threads.
+            int64_t slots = json_object_is_type(val, json_type_int) ? json_object_get_int64(val) : 0;
+            if(slots < 1 || slots > 255)
+            {
+                std::cerr << "[VisorConfiguration] Invalid 'rpc_slots': expected an integer from 1 to 255" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            RPC_SLOTS = static_cast<size_t>(slots);
         }
         else
         {

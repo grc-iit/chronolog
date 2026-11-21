@@ -9,9 +9,19 @@
     "module_location": "/path/to/auth_module"
   },
   "chrono_visor": {
+    "RpcPolicy": {
+      "append_ms": 5000,
+      "control_ms": 5000,
+      "tail_ms": 5000,
+      "replay_ms": 180000,
+      "attempt_ms": 5000,
+      "startup_ms": 30000,
+      "shutdown_ms": 30000,
+      "transfer_ms": 30000
+    },
     "VisorClientPortalService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 5555,
         "service_provider_id": 55
@@ -19,7 +29,7 @@
     },
     "VisorKeeperRegistryService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 8888,
         "service_provider_id": 88
@@ -36,14 +46,25 @@
         "flushlevel": "warning"
       }
     },
-    "delayed_data_admin_exit_in_secs": 3
+    "delayed_data_admin_exit_in_secs": 3,
+    "rpc_slots": 32
   },
   "chrono_keeper": {
+    "RpcPolicy": {
+      "append_ms": 5000,
+      "control_ms": 5000,
+      "tail_ms": 5000,
+      "replay_ms": 180000,
+      "attempt_ms": 5000,
+      "startup_ms": 30000,
+      "shutdown_ms": 30000,
+      "transfer_ms": 30000
+    },
     "RecordingGroup": 7,
     "KeeperRecordingService": {
       "IngestionThreadCount": 4,
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 6666,
         "service_provider_id": 66
@@ -51,7 +72,7 @@
     },
     "KeeperDataStoreAdminService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 7777,
         "service_provider_id": 77
@@ -59,7 +80,7 @@
     },
     "VisorKeeperRegistryService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 8888,
         "service_provider_id": 88
@@ -67,7 +88,7 @@
     },
     "KeeperGrapherDrainService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 3333,
         "service_provider_id": 33
@@ -109,12 +130,12 @@
     },
     "ExtractionModule": {
         "extraction_stream_count":2,
-        "extraction_protocol": "ofi+sockets",
+        "extraction_protocol": "ofi+tcp",
         "extractors": {
             "extractor_to_grapher": {
                 "type": "single_endpoint_rdma_extractor",
                 "receiving_endpoint": {
-                    "protocol_conf": "ofi+sockets",
+                    "protocol_conf": "ofi+tcp",
                     "service_ip": "127.0.0.1",
                     "service_base_port": 3333,
                     "service_provider_id": 33
@@ -124,11 +145,22 @@
     }
   },
   "chrono_grapher": {
+    "RpcPolicy": {
+      "append_ms": 5000,
+      "control_ms": 5000,
+      "tail_ms": 5000,
+      "replay_ms": 180000,
+      "attempt_ms": 5000,
+      "startup_ms": 30000,
+      "shutdown_ms": 30000,
+      "transfer_ms": 30000
+    },
     "RecordingGroup": 7,
     "KeeperGrapherDrainService": {
       "IngestionThreadCount": 1,
+      "transfer_piece_bytes": 1048576,
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 3333,
         "service_provider_id": 33
@@ -136,7 +168,7 @@
     },
     "DataStoreAdminService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 4444,
         "service_provider_id": 44
@@ -144,7 +176,7 @@
     },
     "VisorRegistryService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 8888,
         "service_provider_id": 88
@@ -166,11 +198,12 @@
       "story_chunk_duration_secs": 30,
       "acceptance_window_secs": 60,
       "inactive_story_delay_secs": 300,
-      "watermark_report_interval_secs": 1
+      "watermark_report_interval_secs": 1,
+      "duplicate_receipt_hold_secs": 600
     },
     "ExtractionModule": {
         "extraction_stream_count":2,
-        "extraction_protocol": "ofi+sockets",
+        "extraction_protocol": "ofi+tcp",
         "extractors": { 
             "hdf5_archive_extractor": {
                 "type": "hdf5_extractor",
@@ -180,10 +213,20 @@
     }
   },
   "chrono_player": {
+    "RpcPolicy": {
+      "append_ms": 5000,
+      "control_ms": 5000,
+      "tail_ms": 5000,
+      "replay_ms": 180000,
+      "attempt_ms": 5000,
+      "startup_ms": 30000,
+      "shutdown_ms": 30000,
+      "transfer_ms": 30000
+    },
     "RecordingGroup": 7,
     "PlayerStoreAdminService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 2222,
         "service_provider_id": 22
@@ -191,7 +234,7 @@
     },
     "VisorRegistryService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 8888,
         "service_provider_id": 88
@@ -200,7 +243,7 @@
     "PlaybackQueryService": {
       "IngestionThreadCount": 1,
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 2525,
         "service_provider_id": 25
@@ -208,8 +251,9 @@
     },
     "PlayerRecordingService": {
       "IngestionThreadCount": 1,
+      "transfer_piece_bytes": 1048576,
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 7878,
         "service_provider_id": 78

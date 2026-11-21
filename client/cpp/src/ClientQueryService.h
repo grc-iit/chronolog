@@ -13,6 +13,7 @@
 #include <chronolog_types.h>
 #include <ServiceId.h>
 #include <chronolog_client.h>
+#include "ClientRpcContext.h"
 
 namespace tl = thallium;
 
@@ -22,62 +23,75 @@ namespace chronolog
 class PlaybackQueryRpcClient;
 struct PlaybackQueryResponse;
 
+struct ReplayEntry
+{
+    ClientRpcContext::NativeLease native;
+    RpcPolicyContext::Snapshot policy;
+    ReplayEntry(ClientRpcContext::NativeLease lease, RpcPolicyContext::Snapshot snapshot)
+        : native(std::move(lease))
+        , policy(std::move(snapshot))
+    {}
+};
 struct PlaybackQuery
 {
-    // Exactly one of `eventSeries` or `callback` is set: vector mode appends
-    // to the user-provided vector; callback mode invokes the function once
-    // per event as the response arrives.
-    std::vector<Event>* eventSeries;
+    enum Phase
+    {
+        Pending,
+        Publishing,
+        Complete,
+        Consuming,
+        Abandoned
+    };
+    std::atomic<Phase> phase{Pending};
+    // Entry leases and the context's logical query permit survive every owner,
+    // including quarantined outbound work and an active receive callback.
+    std::shared_ptr<void> retention;
+    std::atomic<bool> submissionReady{false};
+    int submissionStatus = CL_ERR_UNKNOWN;
+    bool submissionKnown = false;
+    std::vector<Event> events; // Private vector staging, never a caller reference.
     Client::EventCallback callback;
-    uint32_t queryId;
-    uint64_t timeout_time;
-    bool completed;
-    // what the player said about its own answer: false means it knows the
-    // series is short (a keeper that did not answer, a keeper's event cap, or
-    // an archive file it could not read)
+    bool const callbackMode;
+    std::atomic<bool> consumed{false};
+    bool discard = true; // Published by consumed; only the receive worker clears staging.
+    static constexpr unsigned CallbackClosed = 1, CallbackActive = 2;
+    std::atomic<unsigned> callbackState{0};
+    bool beginCallback() noexcept
+    {
+        if(std::chrono::steady_clock::now() >= deadline)
+            return false;
+        unsigned expected = 0;
+        if(!callbackState.compare_exchange_strong(expected, CallbackActive, std::memory_order_acq_rel))
+            return false;
+        if(std::chrono::steady_clock::now() < deadline)
+            return true;
+        callbackState.fetch_and(~CallbackActive, std::memory_order_acq_rel);
+        return false;
+    }
+    void endCallback() noexcept { callbackState.fetch_and(~CallbackActive, std::memory_order_acq_rel); }
+    void closeCallbacks() noexcept;
     bool complete = true;
+    uint32_t queryId;
+    std::chrono::steady_clock::time_point deadline;
     StoryId storyId;
     ChronicleName chronicleName;
     StoryName storyName;
-    chrono_time startTime;
-    chrono_time endTime;
-
-    PlaybackQuery(std::vector<Event>& playbackEvents,
-                  uint32_t query_id,
-                  uint64_t timeout_time,
-                  StoryId const& story_id,
-                  ChronicleName const& chronicle,
-                  StoryName const& story,
-                  chrono_time const& start,
-                  chrono_time const& end)
-        : eventSeries(&playbackEvents)
-        , callback()
-        , queryId(query_id)
-        , timeout_time(timeout_time)
-        , completed(false)
-        , storyId(story_id)
-        , chronicleName(chronicle)
-        , storyName(story)
-        , startTime(start)
-        , endTime(end)
-    {}
-
-    PlaybackQuery(Client::EventCallback cb,
-                  uint32_t query_id,
-                  uint64_t timeout_time,
-                  StoryId const& story_id,
-                  ChronicleName const& chronicle,
-                  StoryName const& story,
-                  chrono_time const& start,
-                  chrono_time const& end)
-        : eventSeries(nullptr)
-        , callback(std::move(cb))
-        , queryId(query_id)
-        , timeout_time(timeout_time)
-        , completed(false)
-        , storyId(story_id)
-        , chronicleName(chronicle)
-        , storyName(story)
+    chrono_time startTime, endTime;
+    PlaybackQuery(uint32_t query,
+                  std::chrono::steady_clock::time_point timeout,
+                  StoryId story,
+                  ChronicleName chronicle,
+                  StoryName name,
+                  chrono_time start,
+                  chrono_time end,
+                  Client::EventCallback ownedCallback = {})
+        : callback(std::move(ownedCallback))
+        , callbackMode(bool(callback))
+        , queryId(query)
+        , deadline(timeout)
+        , storyId(story)
+        , chronicleName(std::move(chronicle))
+        , storyName(std::move(name))
         , startTime(start)
         , endTime(end)
     {}
@@ -87,19 +101,15 @@ class ClientQueryService: public tl::provider<ClientQueryService>
 {
 public:
     // Service should be created on the heap not the stack thus the constructor is private...
-    static ClientQueryService* CreateClientQueryService(thallium::engine& tl_engine, ServiceId const& client_service_id)
-    {
-        try
-        {
-            return new ClientQueryService(tl_engine, client_service_id);
-        }
-        catch(thallium::exception&)
-        {
-            return nullptr;
-        }
-    }
+    static ClientQueryService* CreateClientQueryService(thallium::engine&,
+                                                        ServiceId const&,
+                                                        std::shared_ptr<ClientRpcProcedures>,
+                                                        std::weak_ptr<ClientRpcContext> context = {});
 
     ~ClientQueryService();
+
+    std::shared_ptr<ClientRpcProcedures> procedures() const { return procedures_; }
+    std::weak_ptr<ClientRpcContext> context() const noexcept { return context_; }
 
     tl::engine& get_service_engine() { return queryServiceEngine; }
 
@@ -109,57 +119,64 @@ public:
     void removeStoryReader(ChronicleName const&, StoryName const&);
 
     void receive_query_response(tl::request const&, tl::bulk&);
+    // B12: prune inert map roots before testing NativeLease/query idleness.
+    // False means the lock/map is not drained; unknown work stays charged.
+    bool pruneConsumedQueries() noexcept;
 
     int replay_story(ChronicleName const&,
                      StoryName const&,
-                     uint64_t start,
-                     uint64_t end,
-                     std::vector<Event>& replay_events);
-
-    int
-    replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, Client::EventCallback callback);
+                     uint64_t,
+                     uint64_t,
+                     std::vector<Event>&,
+                     rpc::RpcDeadline const&,
+                     std::shared_ptr<ReplayEntry>);
+    int replay_story(ChronicleName const&,
+                     StoryName const&,
+                     uint64_t,
+                     uint64_t,
+                     Client::EventCallback,
+                     rpc::RpcDeadline const&,
+                     std::shared_ptr<ReplayEntry>);
 
 private:
-    ClientQueryService(thallium::engine& tl_engine, ServiceId const&);
+    friend struct ClientQueryServiceTestAccess;
+    ClientQueryService(thallium::engine& tl_engine,
+                       ServiceId const&,
+                       std::shared_ptr<ClientRpcProcedures>,
+                       std::weak_ptr<ClientRpcContext>);
 
     ClientQueryService() = delete;
     ClientQueryService(ClientQueryService const&) = delete;
 
-    // create PlaybackServiceRpcClient associated with the remote Playback Service
-    PlaybackQueryRpcClient* addPlaybackQueryClient(ServiceId const&);
-    // destroy PlaybackServiceRpcClient associated with the remote Playback Service
-    void removePlaybackQueryClient(ServiceId const&);
-
-    PlaybackQuery* start_query(uint64_t,
-                               StoryId const&,
-                               ChronicleName const&,
-                               StoryName const&,
-                               chrono_time const&,
-                               chrono_time const&,
-                               std::vector<Event>&);
-    PlaybackQuery* start_query(uint64_t,
-                               StoryId const&,
-                               ChronicleName const&,
-                               StoryName const&,
-                               chrono_time const&,
-                               chrono_time const&,
-                               Client::EventCallback callback);
+    std::shared_ptr<PlaybackQueryRpcClient> addPlaybackQueryClient(ServiceId const&);
     void stop_query(uint32_t);
-
-    // Issue the playback request to the player and block on the query's
-    // completion or timeout. Common to both replay_story overloads.
-    int dispatch_query(PlaybackQuery* query, PlaybackQueryRpcClient* playbackRpcClient);
-
-    int deserializeResponse(char* buffer, size_t size, PlaybackQueryResponse& response);
+    int replay(ChronicleName const&,
+               StoryName const&,
+               uint64_t,
+               uint64_t,
+               std::vector<Event>*,
+               Client::EventCallback,
+               rpc::RpcDeadline const&,
+               std::shared_ptr<ReplayEntry>);
+    int dispatch_query(std::shared_ptr<PlaybackQuery> const&,
+                       std::shared_ptr<PlaybackQueryRpcClient> const&,
+                       std::shared_ptr<ClientRpcContext> const&,
+                       rpc::RpcDeadline const&,
+                       uint64_t);
+    void registerProcedures(std::function<void(ClientQueryService&, bool)> const& observer);
+    std::shared_ptr<ClientRpcProcedures> procedures_;
+    std::weak_ptr<ClientRpcContext> context_;
     thallium::engine queryServiceEngine;
     ServiceId queryServiceId;
-    std::mutex queryServiceMutex;
-    std::atomic<uint32_t> queryIndex;
-    int queryTimeoutInSecs;
-    std::map<uint32_t, PlaybackQuery> activeQueryMap; // map of active queries by queryId
-    std::map<std::pair<ChronicleName, StoryName>, std::pair<StoryId, PlaybackQueryRpcClient*>> acquiredStoryMap;
+    std::timed_mutex queryServiceMutex;
+    // The unchanged response wire has no native-context generation. Preserve
+    // IDs across context retirement/reconnect while this library stays loaded.
+    inline static std::atomic<uint64_t> queryIndex{0};
+    std::map<uint32_t, std::shared_ptr<PlaybackQuery>> activeQueryMap; // map of active queries by queryId
+    std::map<std::pair<ChronicleName, StoryName>, std::pair<StoryId, std::shared_ptr<PlaybackQueryRpcClient>>>
+            acquiredStoryMap;
     // map of QueryRpcClients by service_endpoint of the remote chrono_grapher PlaybackService
-    std::map<service_endpoint, PlaybackQueryRpcClient*> playbackRpcClientMap;
+    std::map<service_endpoint, std::shared_ptr<PlaybackQueryRpcClient>> playbackRpcClientMap;
 };
 
 

@@ -91,7 +91,7 @@ def load_config_from_file(path: str) -> Optional["ChronoLogConfig"]:
             }
 
         return ChronoLogConfig(
-            protocol=portal.get("protocol_conf", "ofi+sockets"),
+            protocol=portal.get("protocol_conf", "ofi+tcp"),
             portal_ip=portal.get("service_ip", "127.0.0.1"),
             portal_port=int(portal.get("service_base_port", 5555)),
             portal_provider_id=int(portal.get("service_provider_id", 55)),
@@ -110,7 +110,7 @@ class ChronoLogConfig:
 
     def __init__(
         self,
-        protocol: str = "ofi+sockets",
+        protocol: str = "ofi+tcp",
         portal_ip: str = "127.0.0.1",
         portal_port: int = 5555,
         portal_provider_id: int = 55,
@@ -134,7 +134,7 @@ class ChronoLogConfig:
     def from_env(cls) -> "ChronoLogConfig":
         """Create config from environment variables."""
         return cls(
-            protocol=os.getenv("CHRONOLOG_PROTOCOL", "ofi+sockets"),
+            protocol=os.getenv("CHRONOLOG_PROTOCOL", "ofi+tcp"),
             portal_ip=os.getenv("CHRONOLOG_PORTAL_IP", "127.0.0.1"),
             portal_port=int(os.getenv("CHRONOLOG_PORTAL_PORT", "5555")),
             portal_provider_id=int(os.getenv("CHRONOLOG_PORTAL_PROVIDER_ID", "55")),
@@ -213,7 +213,7 @@ class HealthResponse(BaseModel):
 class ConnectionConfig(BaseModel):
     """Configuration for connecting to ChronoLog service."""
 
-    protocol: str = Field(default="ofi+sockets", description="RPC protocol configuration")
+    protocol: str = Field(default="ofi+tcp", description="RPC protocol configuration")
     portal_ip: str = Field(default="127.0.0.1", description="Portal service IP address")
     portal_port: int = Field(default=5555, description="Portal service port")
     portal_provider_id: int = Field(default=55, description="Portal service provider ID")

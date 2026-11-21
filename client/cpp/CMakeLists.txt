@@ -17,12 +17,16 @@ add_library(chronolog_client
     src/KeeperRecordingClient.h
     src/KeeperTailReader.h
     src/KeeperTailReader.cpp
+    src/ChronologTimer.h
+    src/ChronologTimer.cpp
     src/StorytellerClient.h
     src/StorytellerClient.cpp
     src/PlaybackQueryRpcClient.cpp
     src/ClientQueryService.cpp
     src/ChronologClient.cpp
     src/ChronologClientImpl.cpp
+    src/ClientRpcContext.cpp
+    src/ClientNativeRuntime.cpp
     src/ClientConfiguration.cpp
     src/QueryServiceAddress.h
     src/QueryServiceAddress.cpp
@@ -37,11 +41,13 @@ add_library(chronolog_client
 target_include_directories(chronolog_client
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/chrono-common/include>
         $<INSTALL_INTERFACE:${CHRONOLOG_INSTALL_INCLUDE_DIR}>
         # json-c is PUBLIC because public headers include json-c/json.h
         ${JSON-C_INCLUDE_DIRS}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/chrono-rpc/include
         ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
@@ -55,9 +61,16 @@ target_link_directories(chronolog_client
 
 target_link_libraries(chronolog_client
     PRIVATE
+        $<BUILD_INTERFACE:$<TARGET_LINKER_FILE:chrono_rpc>>
         thallium
         ${JSON-C_LIBRARIES}
 )
+
+# The private runtime is a real DSO dependency, with one implementation shared
+# by all service/client images. Link its exact artifact without exporting a
+# private CMake target through the standalone public SDK.
+add_dependencies(chronolog_client chrono_rpc)
+set_property(TARGET chronolog_client APPEND PROPERTY BUILD_RPATH "$<TARGET_FILE_DIR:chrono_rpc>")
 
 # spdlog is PRIVATE: public headers no longer expose spdlog types
 if(TARGET spdlog::spdlog)
@@ -75,7 +88,9 @@ endif()
 # Define the header files to be copied
 set(PUBLIC_HEADER_FILES
     include/chronolog_client.h
+    include/chronolog_types.h
     include/ClientConfiguration.h
+    include/RpcPolicy.h
     include/client_errcode.h
     include/log_level.h
     include/chrono_monitor.h

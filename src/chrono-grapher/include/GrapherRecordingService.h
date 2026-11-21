@@ -1,224 +1,196 @@
 #ifndef GRAPHER_RECORDING_SERVICE_H
 #define GRAPHER_RECORDING_SERVICE_H
-
-#include <iostream>
-#include <vector>
-#include <chrono>
-#include <sstream>
-#include <exception>
-#include <margo.h>
+#include <functional>
+#include <string_view>
 #include <thallium.hpp>
-#include <thallium/serialization/stl/string.hpp>
-#include <cereal/archives/binary.hpp>
-
-#include <chronolog_errcode.h>
-#include <KeeperIdCard.h>
-#include <chronolog_types.h>
-#include <ServiceId.h>
 #include <StoryChunk.h>
-#include <ChunkSenderAnswer.h>
-
+#include <ChunkReceipt.h>
+#include <ServiceId.h>
+#include <private/RpcBulkOwner.h>
+#include <private/RpcBulkSerialization.h>
+#include <private/Crc32c.h>
+#include <chrono_monitor.h>
 #include "ChunkIngestionQueue.h"
 #include "StoryWatermarkRegistry.h"
 #include "WatermarkReportPublisher.h"
-
 namespace tl = thallium;
-
 namespace chronolog
 {
 class GrapherRecordingService: public tl::provider<GrapherRecordingService>
 {
 public:
-    // RecordingService should be created on the heap not the stack thus the constructor is private...
-    static GrapherRecordingService* CreateRecordingService(tl::engine& tl_engine,
-                                                           uint16_t service_provider_id,
-                                                           ChunkIngestionQueue& ingestion_queue,
-                                                           WatermarkReportPublisher* watermark_publisher = nullptr,
-                                                           StoryWatermarkRegistry* watermark_registry = nullptr)
+    static GrapherRecordingService* CreateRecordingService(tl::engine& engine,
+                                                           uint16_t provider,
+                                                           ChunkIngestionQueue& queue,
+                                                           std::shared_ptr<WatermarkReportPublisher> publisher = {},
+                                                           StoryWatermarkRegistry* registry = nullptr)
     {
-        return new GrapherRecordingService(tl_engine,
-                                           service_provider_id,
-                                           ingestion_queue,
-                                           watermark_publisher,
-                                           watermark_registry);
+        return CreateRecordingService(rpc::RpcBulkOwner::Find(engine.get_margo_instance()),
+                                      provider,
+                                      queue,
+                                      publisher,
+                                      registry);
     }
-
-    ~GrapherRecordingService()
+    static GrapherRecordingService* CreateRecordingService(std::shared_ptr<rpc::RpcBulkOwner> const& owner,
+                                                           uint16_t provider,
+                                                           ChunkIngestionQueue& queue,
+                                                           std::shared_ptr<WatermarkReportPublisher> publisher = {},
+                                                           StoryWatermarkRegistry* registry = nullptr)
     {
-        LOG_DEBUG("[GrapherRecordingService] Destructor called. Cleaning up...");
-        get_engine().pop_finalize_callback(this);
+        if(!owner || owner->closing)
+            return nullptr;
+        if(owner->provider)
+            throw std::logic_error("Grapher recording provider already exists");
+        auto service = std::shared_ptr<GrapherRecordingService>(
+                new GrapherRecordingService(owner, provider, queue, publisher, registry));
+        owner->provider = service; // Root actual provider BEFORE the first callback.
+        service->define("receive_story_chunk", &GrapherRecordingService::receive_story_chunk);
+        return service.get();
     }
-
-
-    // reporter identifies the sending keeper's DataStoreAdminService — the
-    // target for watermark reports; invalid/default for senders that do not
-    // expect reports.
-    void receive_story_chunk(tl::request const& request, tl::bulk& b, ServiceId const& reporter)
+    ~GrapherRecordingService() = default;
+    void receive_story_chunk(tl::request const& request,
+                             tl::bulk& source,
+                             ServiceId const& reporter,
+                             uint32_t checksum) noexcept
     {
-        try
+        auto owner = owner_.lock();
+        if(!owner || owner->closing)
+            return;
+        auto lease = owner->incoming.acquire();
+        if(!lease)
         {
-            std::vector<char> mem_vec(b.size());
-            std::chrono::high_resolution_clock::time_point start, end;
-            LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC invoked, ThreadID={}", tl::thread::self_id());
-            tl::endpoint ep = request.get_endpoint();
-            LOG_DEBUG("[GrapherRecordingService] Endpoint obtained, ThreadID={}", tl::thread::self_id());
-            std::vector<std::pair<void*, std::size_t>> segments(1);
-            segments[0].first = (void*)(&mem_vec[0]);
-            segments[0].second = mem_vec.size();
-            LOG_DEBUG("[GrapherRecordingService] Bulk memory prepared, size: {}, ThreadID={}",
-                      mem_vec.size(),
-                      tl::thread::self_id());
-            tl::engine tl_engine = get_engine();
-            LOG_DEBUG("[GrapherRecordingService] Engine addr: {}, ThreadID={}",
-                      (void*)&tl_engine,
-                      tl::thread::self_id());
-            tl::bulk local = tl_engine.expose(segments, tl::bulk_mode::write_only);
-            LOG_DEBUG("[GrapherRecordingService] Bulk memory exposed, ThreadID={}", tl::thread::self_id());
-            b.on(ep) >> local;
-            LOG_DEBUG("[GrapherRecordingService] Received {} bytes of StoryChunk data, ThreadID={}",
-                      b.size(),
-                      tl::thread::self_id());
-
-            StoryChunk* story_chunk = new StoryChunk();
-#ifndef NDEBUG
-            start = std::chrono::high_resolution_clock::now();
-#endif
-            int ret = deserializedWithCereal(&mem_vec[0], b.size(), *story_chunk);
-            if(ret != chronolog::CL_SUCCESS)
-            {
-                LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}",
-                          tl::thread::self_id());
-                delete story_chunk;
-                ret = 10000000 + tl::thread::self_id(); // arbitrary error code encoded with thread id
-                LOG_ERROR("[GrapherRecordingService] Discarding the story chunk, responding {} to Keeper", ret);
-                ChunkReceipt failure;
-                failure.bytes = ret;
-                answerChunkSender(request, failure, "GrapherRecordingService");
-                return;
-            }
-#ifndef NDEBUG
-            end = std::chrono::high_resolution_clock::now();
-            LOG_INFO("[GrapherRecordingService] Deserialization took {} us, ThreadID={}",
-                     std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000.0,
-                     tl::thread::self_id());
-#endif
-            LOG_DEBUG(
-                    "[GrapherRecordingService] StoryChunk received: StoryId {} StartTime {} eventCount {} ThreadID={}",
-                    story_chunk->getStoryId(),
-                    story_chunk->getStartTime(),
-                    story_chunk->getEventCount(),
-                    tl::thread::self_id());
-
-            if(theWatermarkPublisher != nullptr)
-            {
-                theWatermarkPublisher->recordContributor(story_chunk->getStoryId(), reporter);
-            }
-
-            // The receipt ties this delivery to the writes of its events and
-            // travels with the chunk into the pipeline; see ChunkReceipt.h.
-            ChunkReceipt receipt;
-            receipt.bytes = b.size();
-            if(theWatermarkRegistry != nullptr)
-            {
-                receipt.grapher_instance = theWatermarkRegistry->instanceId();
-                receipt.receipt = theWatermarkRegistry->assignReceipt(story_chunk->getStoryId());
-                story_chunk->carryReceipt(receipt.receipt);
-            }
-            // When the keeper cannot be answered (it died, or the network timed
-            // the handle out), the chunk is kept: it is written, and its receipt
-            // settles; the keeper, not knowing the receipt, sends it again later
-            // and reads drop the second copy.
-            answerChunkSender(request, receipt, "GrapherRecordingService");
-            LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC responded {}, ThreadID={}",
-                      b.size(),
-                      tl::thread::self_id());
-
-            theIngestionQueue.ingestStoryChunk(story_chunk);
-        }
-        catch(std::bad_alloc const& ex)
-        {
-            LOG_ERROR("[GrapherRecordingService] Failed to allocate memory for StoryChunk data, ThreadID={}",
-                      tl::thread::self_id());
-            ChunkReceipt failure;
-            failure.bytes = 20000000 + tl::thread::self_id();
-            answerChunkSender(request, failure, "GrapherRecordingService");
+            // No free receive slot: say so instead of leaving the keeper to
+            // wait for an answer that never comes. Nothing was pulled.
+            ChunkReceipt busy;
+            busy.status = CL_ERR_RPC_CAPACITY;
+            owner->incoming.refuse(request, busy);
             return;
         }
-        catch(tl::exception const& ex)
+        struct Receive: rpc::BulkReceiveContext
         {
-            // the bulk pull failed: nothing was received or stored, and the
-            // keeper sends the chunk again
-            LOG_WARNING("[GrapherRecordingService] Could not receive a StoryChunk: {}, ThreadID={}",
-                        ex.what(),
-                        tl::thread::self_id());
-            ChunkReceipt failure;
-            failure.bytes = 30000000 + tl::thread::self_id();
-            answerChunkSender(request, failure, "GrapherRecordingService");
+            using rpc::BulkReceiveContext::BulkReceiveContext;
+            std::unique_ptr<StoryChunk> chunk;
+        };
+        std::shared_ptr<Receive> context;
+        StoryId story = 0;
+        StoryWatermarkRegistry::Delivery delivery;
+        bool fresh = false;
+        try
+        {
+            context = std::make_shared<Receive>(owner,
+                                                *owner->engine,
+                                                request,
+                                                source,
+                                                owner->incoming.observers,
+                                                owner->incoming.pieceBytes,
+                                                owner->incoming.pullMs,
+                                                owner->incoming.answerMs);
+            lease->retain(context);
+            if(!context->pull())
+            {
+                if(context->timedOut)
+                    LOG_WARNING("[GrapherRecordingService] gave up pulling a chunk of {} bytes from {} after {} ms",
+                                context->bytes.size(),
+                                to_string(reporter),
+                                owner->incoming.pullMs);
+                // The pull has returned, so no piece is in flight and the slot
+                // is free again. A keeper still there learns that nothing was
+                // received; it keeps the chunk and sends it again.
+                context->answer(ChunkReceipt{});
+                return;
+            }
+            // A chunk whose bytes differ from what the keeper sent is refused
+            // with nothing ingested; the keeper keeps it and sends it again.
+            context->chunk = std::make_unique<StoryChunk>();
+            if(rpc::crc32c(context->bytes.data(), context->bytes.size()) != checksum ||
+               !rpc::deserializeBulk(context->bytes.data(), context->bytes.size(), *context->chunk))
+            {
+                LOG_WARNING("[GrapherRecordingService] refused a chunk of {} bytes from {}: checksum or format "
+                            "does not match",
+                            context->bytes.size(),
+                            to_string(reporter));
+                context->answer(ChunkReceipt{});
+                return;
+            }
+            auto* chunk = context->chunk.get();
+            StoryWatermarkRegistry::Incarnation incarnation;
+            ChunkReceipt reply;
+            reply.bytes = context->bytes.size();
+            if(registry_)
+            {
+                // A keeper that got no answer sends the same chunk again. An
+                // identical delivery whose events are already written gets
+                // the first one's receipt and is not ingested a second time.
+                story = chunk->getStoryId();
+                delivery.reporter = to_string(reporter);
+                delivery.start = chunk->getStartTime();
+                delivery.end = chunk->getEndTime();
+                delivery.size = context->bytes.size();
+                delivery.checksum = checksum;
+                delivery.hash =
+                        std::hash<std::string_view>{}(std::string_view(context->bytes.data(), context->bytes.size()));
+                reply.grapher_instance = registry_->instanceId();
+                reply.receipt = registry_->receiptForDelivery(story, delivery, fresh, &incarnation);
+                if(!fresh)
+                {
+                    LOG_INFO("[GrapherRecordingService] StoryId={} chunk {}-{} from {} is already written; "
+                             "answering its receipt {}",
+                             story,
+                             delivery.start,
+                             delivery.end,
+                             delivery.reporter,
+                             reply.receipt);
+                    context->answer(reply);
+                    return;
+                }
+                chunk->carryReceipt(reply.receipt);
+            }
+            if(publisher_)
+                publisher_->recordContributor(chunk->getStoryId(), reporter, std::move(incarnation));
+            queue_.ingestStoryChunk(chunk);
+            context->chunk.release(); // Received data survives a failed reply.
+            // A reply that fails has returned as well, and holds nothing: the
+            // slot is freed either way.
+            context->answer(reply);
+        }
+        catch(...)
+        {
+            if(context)
+            {
+                // Keep a received chunk when ingestion failed, and the slot
+                // when a piece may still be in flight (an exception between
+                // starting it and waiting for it). Never let the
+                // failure-response throw outwards.
+                if((context->initiated && !context->completed) || context->chunk)
+                {
+                    // Not ingested: the keeper's next send must not be taken
+                    // for a duplicate.
+                    if(fresh && context->chunk && registry_)
+                        registry_->forgetDelivery(story, delivery);
+                    lease->quarantine();
+                    return;
+                }
+                context->answer(ChunkReceipt{});
+            }
         }
     }
 
 private:
-    GrapherRecordingService(tl::engine& tl_engine,
-                            uint16_t service_provider_id,
-                            ChunkIngestionQueue& ingestion_queue,
-                            WatermarkReportPublisher* watermark_publisher,
-                            StoryWatermarkRegistry* watermark_registry)
-        : tl::provider<GrapherRecordingService>(tl_engine, service_provider_id)
-        , theIngestionQueue(ingestion_queue)
-        , theWatermarkPublisher(watermark_publisher)
-        , theWatermarkRegistry(watermark_registry)
-    {
-        define("receive_story_chunk", &GrapherRecordingService::receive_story_chunk);
-        //set up callback for the case when the engine is being finalized while this provider is still alive
-        get_engine().push_finalize_callback(this, [p = this]() { delete p; });
-    }
-
-    int deserializedWithCereal(char* buffer, size_t size, StoryChunk& story_chunk)
-    {
-        std::stringstream ss(std::ios::binary | std::ios::in | std::ios::out);
-        try
-        {
-            ss.write(buffer, size);
-            cereal::BinaryInputArchive iarchive(ss);
-            iarchive(story_chunk);
-            return chronolog::CL_SUCCESS;
-        }
-        catch(cereal::Exception const& ex)
-        {
-            LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, size={}, ThreadID={}. "
-                      "Cereal exception encountered.",
-                      ss.str().size(),
-                      tl::thread::self_id());
-            LOG_ERROR("[GrapherRecordingService] Exception: {}", ex.what());
-            return chronolog::CL_ERR_UNKNOWN;
-        }
-        catch(std::exception const& ex)
-        {
-            LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, size={}, ThreadID={}. "
-                      "std::exception encountered.",
-                      ss.str().size(),
-                      tl::thread::self_id());
-            LOG_ERROR("[GrapherRecordingService] Exception: {}", ex.what());
-            return chronolog::CL_ERR_UNKNOWN;
-        }
-        catch(...)
-        {
-            LOG_ERROR("[GrapherRecordingService] Failed to deserialize a story chunk, ThreadID={}. Unknown exception "
-                      "encountered.",
-                      tl::thread::self_id());
-            return chronolog::CL_ERR_UNKNOWN;
-        }
-    }
-
-    GrapherRecordingService(GrapherRecordingService const&) = delete;
-
-    GrapherRecordingService& operator=(GrapherRecordingService const&) = delete;
-
-    ChunkIngestionQueue& theIngestionQueue;
-    WatermarkReportPublisher* theWatermarkPublisher; // not owned; may be null
-    StoryWatermarkRegistry* theWatermarkRegistry;    // not owned; may be null
+    GrapherRecordingService(std::shared_ptr<rpc::RpcBulkOwner> const& owner,
+                            uint16_t provider,
+                            ChunkIngestionQueue& queue,
+                            std::shared_ptr<WatermarkReportPublisher> publisher,
+                            StoryWatermarkRegistry* registry)
+        : tl::provider<GrapherRecordingService>(*owner->engine, provider)
+        , owner_(owner)
+        , queue_(queue)
+        , publisher_(publisher)
+        , registry_(registry)
+    {}
+    std::weak_ptr<rpc::RpcBulkOwner> owner_;
+    ChunkIngestionQueue& queue_;
+    std::shared_ptr<WatermarkReportPublisher> publisher_;
+    StoryWatermarkRegistry* registry_;
 };
-
 } // namespace chronolog
-
 #endif
