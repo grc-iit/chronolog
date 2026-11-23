@@ -88,10 +88,12 @@ unregistered from the visor: it answers a durable write -19 and an accepted writ
 an earlier attempt of the same write went unanswered, the writer sees -21 instead of -19, as with
 any -19.
 
-This lasts until the keeper deletes its recording service, late in the shutdown. That deregisters
-all its RPCs, including the tail read the client uses as a probe, so a durable write is then an
-unanswered attempt as against a dead keeper: the client waits, retries, and returns -21. An
-accepted write still gets -1.
+This lasts until the keeper stops answering RPCs, at the end of its shutdown, just before the
+process exits. From then on a write is an unanswered attempt, as against a dead keeper: a durable
+write waits, retries and returns -21, and an accepted write returns `CL_ERR_OUTCOME_UNCONFIRMED`
+(-23) when its `append_ms` budget runs out. With one keeper and its WAL on, a keeper sent SIGTERM
+answered -1 and -19 for the 81 s it took to stop, while it waited for the grapher to confirm
+its durable events written.
 
 The client reads "RPC not registered" from a keeper as "this keeper lacks the durable RPC" only
 while that keeper has never answered a durable call from this client, and only if the keeper still
