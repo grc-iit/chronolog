@@ -233,6 +233,34 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chunk_sender_answer_test DESTINATION tests)
 endif()
 
+# RDMATransferAgent lifetime (GTest, #707): deleting one agent leaves the other
+# agents of its engine working. Two grapher receive services over ofi+sockets on
+# 127.0.0.1.
+add_executable(rdma_transfer_agent_lifetime_test
+    chrono_common_rdma_transfer_agent_lifetime_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp
+)
+
+target_include_directories(rdma_transfer_agent_lifetime_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(rdma_transfer_agent_lifetime_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    chrono_rpc
+    thallium
+)
+
+set_target_properties(rdma_transfer_agent_lifetime_test PROPERTIES OUTPUT_NAME chronolog-test-common-rdma-transfer-agent-lifetime)
+gtest_discover_tests(rdma_transfer_agent_lifetime_test TEST_PREFIX "Unit_ChronoCommon_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(rdma_transfer_agent_lifetime_test DESTINATION tests)
+endif()
+
 # StoryChunkExtractorCSV (GTest): an empty window leaves no file behind
 add_executable(chunk_extractor_csv_test
     chrono_common_chunk_extractor_csv_test.cpp

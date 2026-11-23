@@ -49,6 +49,33 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chronolog_client_query_service_address_test DESTINATION tests)
 endif()
 
+# PlaybackQueryRpcClient lifetime (GTest, #707): deleting one player's route
+# leaves the other routes of the client context working. Fake playback services
+# over ofi+sockets on 127.0.0.1.
+add_executable(chronolog_client_playback_query_rpc_client_lifetime_test
+    playback_query_rpc_client_lifetime_test.cpp
+)
+
+target_include_directories(chronolog_client_playback_query_rpc_client_lifetime_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/src
+)
+
+target_link_libraries(chronolog_client_playback_query_rpc_client_lifetime_test PRIVATE
+    GTest::gtest_main
+    chronolog_client
+    chrono_rpc
+    thallium
+)
+
+set_target_properties(chronolog_client_playback_query_rpc_client_lifetime_test PROPERTIES
+    OUTPUT_NAME chronolog-test-client-playback-query-rpc-client-lifetime)
+gtest_discover_tests(chronolog_client_playback_query_rpc_client_lifetime_test TEST_PREFIX "Unit_ChronologClient_"
+    PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chronolog_client_playback_query_rpc_client_lifetime_test DESTINATION tests)
+endif()
+
 # User name a client logs at start, with or without a controlling terminal
 add_executable(chronolog_client_login_name_test
     client_login_name_test.cpp

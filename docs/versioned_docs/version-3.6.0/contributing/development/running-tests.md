@@ -11,7 +11,7 @@ ChronoLog's tests come in three groups:
 - **Integration scripts** in `tests/integration/*.sh` that deploy their own daemons, run a scenario and stop them. They are not registered with CTest.
 - **The distributed pipeline**, a 7-container deployment that CI runs on every pull request and that `docker/local_distributed_ci.sh` runs locally. See [CI/CD](../guidelines/ci-cd.md).
 
-A Debug build registers 1315 CTest entries: 1037 unit tests, 8 functional tests (5 disabled), 177 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 72 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
+A Debug build registers 1359 CTest entries: 1077 unit tests, 8 functional tests (5 disabled), 181 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 72 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
 
 ---
 
@@ -83,6 +83,7 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 | `Unit_ChronoCommon_ExtractionModule` | 5 | `chrono_common_extraction_module_test.cpp` | The drain loop shared by the keeper and the grapher |
 | `Unit_ChronoCommon_LogEventCodec` | 5 | `chrono_common_log_event_codec_test.cpp` | The byte layout of a keeper WAL event, and how a cut, oversized or newer-version encoding is refused |
 | `Unit_ChronoCommon_ChunkSenderAnswer` | 6 | `chrono_common_chunk_sender_answer_test.cpp` | The answer an RPC handler gives its caller: a thallium error from it does not leave the handler, and the grapher's, the player's and the keeper's handlers answer only through it |
+| `Unit_ChronoCommon_RDMATransferAgentLifetime` | 1 | `chrono_common_rdma_transfer_agent_lifetime_test.cpp` | Deleting a keeper's chunk sender for one grapher leaves its sender for another grapher on the same provider id working |
 | `Unit_ChronoCommon_Crc32c` | 3 | `chrono_common_crc32c_test.cpp` | The SSE4.2 path and the boost fallback of CRC-32C agree |
 | `Unit_ChronoCommon_ChunkExtractorCSV` | 2 | `chrono_common_chunk_extractor_csv_test.cpp` | The CSV extractor and empty windows |
 | `Unit_ChronoCommon_ExtractionChainConfig` | 1 | `chrono_common_extraction_chain_config_test.cpp` | Parsing extraction chain configurations (custom `main`, not GTest) |
@@ -136,7 +137,7 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 | `Unit_ChronoPlayer_ArchiveNumberedFiles` | 5 | `chrono_player_archive_numbered_files_test.cpp` | A window written more than once is read from every file |
 | `Unit_ChronoPlayer_Transports/KeeperHotFetch`, `..._HotFetchPhaseDeadline` | 17 | `chrono_player_keeper_hot_fetch_client_test.cpp` | Fetches from the keepers in waves of two within one deadline, over both transports; a silent keeper costs one deadline and drops out of the split |
 | `Unit_ChronoPlayer_ReplayEventMerge` | 4 | `chrono_player_replay_event_merge_test.cpp` | Merging archive and keeper events without duplicates |
-| `Unit_ChronoPlayer_ArchiveRequestReply` | 2 | `chrono_player_archive_request_reply_test.cpp` | An archive read the reading agent cannot use still answers its query, short |
+| `Unit_ChronoPlayer_ArchiveRequestReply`, `..._QueryResponseAgentLifetime` | 3 | `chrono_player_archive_request_reply_test.cpp` | An archive read the reading agent cannot use still answers its query, short; deleting the response agent of one client leaves another client's agent on the same provider id working |
 | `Unit_ChronoPlayer_ArchiveClientId` | 2 | `chrono_player_archive_client_id_test.cpp` | The full 64-bit client id survives the archive |
 | `Unit_ChronoPlayer_ArchiveVisibility` | 2 | `chrono_player_archive_visibility_test.cpp` | Archive reads at the split point |
 | `Unit_ChronoPlayer_PlayerReaderConf` | 2 | `chrono_player_reader_conf_test.cpp` | The `ArchiveReaders` block; removed settings are ignored |
@@ -166,6 +167,7 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 | `Unit_ChronologClient_MetadataOperationState`, `..._RpcPolicyContext` | 4 | `metadata_operation_state_test.cpp` | An unconfirmed metadata change blocks conflicting ones until a later answer resolves it |
 | `Unit_ChronologClient_ReplayCallbacks` | 2 | `replay_deadline_test.cpp` | A replay callback is never called after the budget runs out, and closing waits for one already running |
 | `Unit_ChronologClient_AppendCompatibility` | 1 | `append_deadline_test.cpp` | A `StoryHandle` subclass written for the old API still gets an acknowledgement and an unconfirmed fallback from `append_event` |
+| `Unit_ChronologClient_PlaybackQueryRpcClientLifetime` | 1 | `playback_query_rpc_client_lifetime_test.cpp` | Deleting a reader's playback route to one player leaves its route to another player on the same provider id working |
 | `Unit_ChronologClient_QueryServiceAddressTest` | 10 | `query_service_address_test.cpp` | The address a reader listens on when the visor is on another host |
 | `Unit_ChronologClient_ClientIdentityTest` | 5 | `chronolog_client_identity_test.cpp` | The `ClientId` layout |
 | `Unit_ChronologClient_ClientLoginName` | 4 | `client_login_name_test.cpp` | The logged user name when the process has no login name |
@@ -334,6 +336,8 @@ WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
   tests/integration/rpc_deadline_matrix_test.sh     # ~5 min, expect 130/130
 WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
   tests/integration/rpc_lifecycle_deadline_test.sh  # ~2 min, expect 2/2 (one per protocol in PROTOCOLS)
+WORK_DIR=~/chronolog-install/chronolog \
+  tests/integration/keeper_leave_test.sh            # ~1 min, expect 8/8
 ```
 
 `keeper_wal_crash_test.sh`, `keeper_wal_off_test.sh`, `keeper_restart_held_test.sh`, `keeper_wal_cap_test.sh`, `keeper_wal_shutdown_test.sh` and `keeper_wal_startup_test.sh` run `chronolog-test-durable-probe`, which is built but not installed, so they need `BUILD_DIR`. The startup script also runs `chronolog-test-wal-fixture` to write its WAL directories, the crash script runs it to count the E records in the keeper's WAL, and the shutdown script preloads `libchronolog_wal_sync_hold.so`, both from the same build directory. `keeper_wal_group_test.sh` runs `chrono-bench` from the install tree. The durations are estimates from the scripts' timing settings.
@@ -366,6 +370,7 @@ Between scripts it stops any daemon left running from `WORK_DIR`'s `bin/`, and p
 | `rpc_bulk_timeout_test.sh` | Runs the `Communication_RpcBulkLifetime_`, `RpcBulkReceiver_`, `RpcPlayerResponse_` and `RpcClientBulk_` cases one at a time on both transports. Deploys no daemons. |
 | `rpc_deadline_matrix_test.sh` | Runs the `Integration_Client{Append,Metadata,Replay}Deadline` cases one at a time on both transports, compiles a program against the installed client headers, and checks a real `ReplayStory` that times out at the shipped 180 s budget. Deploys no daemons. |
 | `rpc_lifecycle_deadline_test.sh` | With a keeper paused, a public tail read stays within its budget, against real daemons; once per protocol in `PROTOCOLS`. |
+| `keeper_leave_test.sh` | With two keepers in a recording group, stopping one with SIGTERM leaves the other usable: a new story is acquired, written, released and destroyed with its chronicle, a second one too, and the visor logs no refused start, no unconfirmed stop and no failed admin client. Before #743 every acquire after the keeper left returned `CL_ERR_NO_KEEPERS`. It uses the template's ports and refuses to start while any ChronoLog daemon runs on the host. |
 
 Run them one at a time; each deploys its own cluster on the same ports. Each restores the configuration it patched and stops its daemons on exit. If one is interrupted, check for leftover daemons and for a `*.backup` file in `~/chronolog-install/chronolog/conf/`.
 
