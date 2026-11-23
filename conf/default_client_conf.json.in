@@ -1,8 +1,18 @@
 {
   "chrono_client": {
+    "RpcPolicy": {
+      "append_ms": 5000,
+      "control_ms": 5000,
+      "tail_ms": 5000,
+      "replay_ms": 180000,
+      "attempt_ms": 5000,
+      "startup_ms": 30000,
+      "shutdown_ms": 30000,
+      "transfer_ms": 30000
+    },
     "VisorClientPortalService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 5555,
         "service_provider_id": 55
@@ -10,7 +20,7 @@
     },
     "ClientQueryService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 5557,
         "service_provider_id": 57

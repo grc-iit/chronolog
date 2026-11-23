@@ -31,7 +31,7 @@ Configure via environment variables (see `env.example`):
 | `HOST` | `0.0.0.0` | Service bind address |
 | `PORT` | `8080` | Service port |
 | `CHRONOLOG_LIB_PATH` | - | Path to ChronoLog Python bindings |
-| `CHRONOLOG_PROTOCOL` | `ofi+sockets` | RPC protocol |
+| `CHRONOLOG_PROTOCOL` | `ofi+tcp` | RPC protocol |
 | `CHRONOLOG_PORTAL_IP` | `127.0.0.1` | Portal service IP |
 | `CHRONOLOG_PORTAL_PORT` | `5555` | Portal service port |
 | `CHRONOLOG_PORTAL_PROVIDER_ID` | `55` | Portal service provider ID |

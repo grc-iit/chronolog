@@ -5,6 +5,7 @@
 # without requiring the source repository.
 
 set -e
+ORIGINAL_ARGUMENTS=("$@")
 
 # Colors
 ERR='\033[7;37m\033[41m'
@@ -58,82 +59,40 @@ RESTART_KEEPER_INDEX=""
 WAL_ENABLED="${WAL_ENABLED:-0}"
 
 # Helper Methods -----------------------------------------------------------------------------------
-start_service() {
-    local bin="$1"
-    local args="$2"
-    local monitor_file="$3"
-    echo -e "${DEBUG}Launching $bin $args ...${NC}"
-    nohup ${bin} ${args} > "${MONITOR_DIR}/${monitor_file}" 2>&1 &
-}
-
-kill_service() {
-    local bin="$1"
-    local name
-    name=$(basename "$bin")
-    echo -e "${DEBUG}Killing ${name} ...${NC}"
-    pkill -9 -f "${bin} --config"
-}
-
-stop_service() {
-    local bin="$1"
-    local name
-    name=$(basename "$bin")
-    # Grace period (seconds) to wait for a clean SIGTERM shutdown before
-    # escalating to SIGKILL. Defaults to 30s when not supplied.
-    local timeout="${2:-30}"
-    # Poll interval (seconds). Kept small so that a fast graceful shutdown is
-    # detected almost immediately instead of being rounded up to the interval.
-    local poll_interval=1
-    # Match the launched command line, "<bin> --config ...". The binary path
-    # alone also matches this script when it was given with -v/-g/-p/-a.
-    local pattern="${bin} --config"
-
-    # Nothing to do if the service is not running.
-    if ! pgrep -f "${pattern}" >/dev/null; then
-        echo -e "${DEBUG}${name} is not running.${NC}"
-        echo ""
-        return 0
-    fi
-
-    echo -e "${DEBUG}Stopping ${name} (SIGTERM, up to ${timeout}s) ...${NC}"
-    pkill -f "${pattern}" || true
-
-    # Wait for graceful shutdown, polling frequently and giving up after the
-    # grace period. Using an elapsed-time bound (rather than a fixed number of
-    # sleeps) keeps the total wait honest even if a poll takes longer than
-    # expected.
-    local waited=0
-    while (( waited < timeout )); do
-        if ! pgrep -f "${pattern}" >/dev/null; then
-            echo -e "${DEBUG}All ${name} processes stopped gracefully.${NC}"
-            echo ""
-            return 0
-        fi
-        sleep "${poll_interval}"
-        waited=$(( waited + poll_interval ))
-    done
-
-    # Grace period expired: the service ignored SIGTERM or is stuck in
-    # shutdown. Escalate to SIGKILL and confirm the processes are gone.
-    echo -e "${DEBUG}Timeout (${timeout}s) reached while stopping ${name}. Forcing termination.${NC}"
-    kill_service "${bin}"
-
-    local kill_waited=0
-    while (( kill_waited < 5 )); do
-        if ! pgrep -f "${pattern}" >/dev/null; then
-            echo -e "${DEBUG}Killed: ${name}.${NC}"
-            echo ""
-            return 0
-        fi
-        sleep "${poll_interval}"
-        kill_waited=$(( kill_waited + poll_interval ))
-    done
-
-    # Still present after SIGKILL -- typically an uninterruptible (D-state)
-    # process. Report it but do not block the rest of the shutdown sequence.
-    echo -e "${ERR}${name} still present after SIGKILL (possibly stuck in uninterruptible I/O).${NC}"
-    echo ""
+# ofi+tcp binds the first interface libfabric picks unless FI_TCP_IFACE names
+# one. On a single host every endpoint is 127.0.0.1, and a process bound to
+# eth0 then cannot be answered over loopback (the stop controller's quiesce
+# calls time out), so loopback deployments pin it to lo. A value already in the
+# environment is kept.
+select_tcp_iface() {
+    [[ -n "${FI_TCP_IFACE:-}" || ! -f "${CONF_FILE}" ]] && return 0
+    jq -e '([.. | objects | select(has("protocol_conf")) | .protocol_conf] | any(. == "ofi+tcp")) and
+           ([.. | objects | select(has("service_ip")) | .service_ip] | all(startswith("127.")))' \
+        "${CONF_FILE}" > /dev/null 2>&1 && export FI_TCP_IFACE=lo
     return 0
+}
+
+lifecycle() {
+    select_tcp_iface
+    python3 "${SCRIPT_DIR}/deployment_lifecycle.py" --work-dir "${WORK_DIR}" "$@"
+}
+
+start_service() {
+    local bin="$1" config="$2" component="$3" monitor_file="$4"
+    lifecycle launch --executable "$bin" --config "$config" --component "$component" \
+        --output "${MONITOR_DIR}/${monitor_file}"
+}
+
+fence_mutation() {
+    local operation="$1"
+    if [[ -z "${CHRONOLOG_DEPLOYMENT_GUARD:-}" ]]; then
+        select_tcp_iface
+        exec python3 "${SCRIPT_DIR}/deployment_lifecycle.py" --work-dir "${WORK_DIR}" \
+            --occupied-executable "${VISOR_BIN}" --occupied-executable "${GRAPHER_BIN}" \
+            --occupied-executable "${PLAYER_BIN}" --occupied-executable "${KEEPER_BIN}" \
+            "run-${operation}" -- bash "${BASH_SOURCE[0]}" "${ORIGINAL_ARGUMENTS[@]}"
+    fi
+    lifecycle guard
 }
 
 generate_config_files() {
@@ -306,7 +265,7 @@ generate_config_files() {
 }
 
 check_dependencies() {
-    local dependencies=("jq" "ldd" "nohup" "pkill" "readlink" "realpath" "chrpath")
+    local dependencies=("jq" "ldd" "python3" "readlink" "realpath" "chrpath")
     echo -e "${DEBUG}Checking required dependencies...${NC}"
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
@@ -480,8 +439,8 @@ clean_wal_dirs() {
     rmdir -- "${wal_root}" 2>/dev/null || true
 }
 
-# Relaunches keeper $1 with the conf start generated for it, so it reuses the
-# same ports and WAL directory. Regenerates nothing.
+# Relaunches keeper $1 of the running deployment with the conf start generated
+# for it, so it reuses the same ports and WAL directory. Regenerates nothing.
 restart_keeper() {
     local n="$1"
     local conf="${CONF_DIR}/chrono-keeper-conf-${n}.json"
@@ -489,34 +448,19 @@ restart_keeper() {
         echo -e "${ERR}No generated configuration ${conf}; start the deployment first.${NC}" >&2
         return 1
     fi
-    if pgrep -f "${KEEPER_BIN} --config ${conf}" >/dev/null; then
-        echo -e "${ERR}Keeper ${n} is still running; stop it before restarting it.${NC}" >&2
-        return 1
-    fi
     echo -e "${DEBUG}Relaunching ${KEEPER_BIN} --config ${conf} ...${NC}"
-    # Append, so the launch log of the run that died is kept.
-    nohup "${KEEPER_BIN}" --config "${conf}" >> "${MONITOR_DIR}/chrono-keeper-${n}.launch.log" 2>&1 &
-}
-
-check_execution_stopped() {
-    echo -e "${DEBUG}Checking if ChronoLog processes are running...${NC}"
-    local active_processes
-    active_processes=$(pgrep -la chrono || true)
-
-    if [[ -n "${active_processes}" ]]; then
-        echo -e "${ERR}ChronoLog processes are still running:${NC}"
-        echo "${active_processes}"
-        echo -e "${ERR}Please stop all ChronoLog processes before cleaning.${NC}"
-        exit 1
-    else
-        echo -e "${DEBUG}No active ChronoLog processes detected. Proceeding with cleaning.${NC}"
-    fi
+    # The lifecycle refuses while the recorded keeper still runs, and replaces
+    # its record only once that process is gone. It appends to the launch log,
+    # so the log of the run that died is kept.
+    lifecycle restart-keeper --executable "${KEEPER_BIN}" --config "${conf}" \
+        --output "${MONITOR_DIR}/chrono-keeper-${n}.launch.log"
 }
 
 # Main functions ------------------------------------------------------------------------------------
 start() {
     echo -e "${INFO}Preparing to start ChronoLog...${NC}"
     check_work_dir
+    fence_mutation start
     mkdir -p "${MONITOR_DIR}" "${OUTPUT_DIR}"
     check_installation
     local wal_root=""
@@ -525,18 +469,15 @@ start() {
     fi
     generate_config_files "${NUM_KEEPERS}" "${CONF_FILE}" "${CONF_DIR}" "${OUTPUT_DIR}" "${NUM_RECORDING_GROUPS}" "${MONITOR_DIR}" "${CLIENT_CONF_FILE}" "${wal_root}"
     echo -e "${INFO}Starting ChronoLog...${NC}"
-    start_service "${VISOR_BIN}" "--config ${CONF_DIR}/chrono-visor-conf.json" "chrono-visor.launch.log"
-    sleep 2
+    start_service "${VISOR_BIN}" "${CONF_DIR}/chrono-visor-conf.json" visor "chrono-visor.launch.log"
     for (( i=1; i<=NUM_RECORDING_GROUPS; i++ )); do
-        start_service "${GRAPHER_BIN}" "--config ${CONF_DIR}/chrono-grapher-conf-$i.json" "chrono-grapher-$i.launch.log"
+        start_service "${GRAPHER_BIN}" "${CONF_DIR}/chrono-grapher-conf-$i.json" grapher "chrono-grapher-$i.launch.log"
     done
-    sleep 2
     for (( i=1; i<=NUM_RECORDING_GROUPS; i++ )); do
-        start_service "${PLAYER_BIN}" "--config ${CONF_DIR}/chrono-player-conf-$i.json" "chrono-player-$i.launch.log"
+        start_service "${PLAYER_BIN}" "${CONF_DIR}/chrono-player-conf-$i.json" player "chrono-player-$i.launch.log"
     done
-    sleep 2
     for (( i=1; i<=NUM_KEEPERS; i++ )); do
-        start_service "${KEEPER_BIN}" "--config ${CONF_DIR}/chrono-keeper-conf-$i.json" "chrono-keeper-$i.launch.log"
+        start_service "${KEEPER_BIN}" "${CONF_DIR}/chrono-keeper-conf-$i.json" keeper "chrono-keeper-$i.launch.log"
     done
     echo -e "${INFO}ChronoLog Started.${NC}"
 }
@@ -544,26 +485,21 @@ start() {
 stop() {
     echo -e "${INFO}Stopping ChronoLog...${NC}"
     check_work_dir
-    # Keeper first, while the grapher is still up: on SIGTERM it sends again every
-    # chunk the grapher has not acked, then waits until the grapher confirms every
-    # chunk written, for up to shutdown_confirm_timeout_secs (default 150).
-    # Stopping the grapher first would leave nothing to send to or confirm.
-    #
-    # Its grace is larger than the others' because it is the only service with
-    # real shutdown work: sealing and sending what it holds, then that wait. The
-    # grace is a ceiling, not a fixed wait -- stop_service polls every 1s and
-    # returns as soon as the process is gone -- so a fast shutdown still costs
-    # about a second.
-    stop_service "${KEEPER_BIN}" 240
-    # Each keeper with the WAL on writes exit-summary as it exits. Read them now,
-    # but stop the rest before failing on them.
-    local wal_status=0
-    report_wal_exit_summaries "${CONF_DIR}" || wal_status=$?
-    stop_service "${PLAYER_BIN}" 30
-    stop_service "${GRAPHER_BIN}" 30
-    stop_service "${VISOR_BIN}" 30
-    echo -e "${INFO}All ChronoLog processes stopped.${NC}"
-    if (( wal_status != 0 )); then
+    # A keeper waits up to shutdown_confirm_timeout_secs for the grapher to
+    # confirm its last chunks before it exits, so the one stop budget covers
+    # that wait plus 90 s for the keepers' other work and 90 s for the player,
+    # grapher and visor, as v3.4.0's separate waits did (240 s per keeper with
+    # the default 150 s, 30 s for each other service).
+    local confirm_secs
+    confirm_secs=$(jq -r '.chrono_keeper.DataStoreInternals.shutdown_confirm_timeout_secs // 150' \
+        "${CONF_FILE}" 2> /dev/null || true)
+    case "${confirm_secs}" in '' | *[!0-9]*) confirm_secs=150 ;; esac
+    # An incomplete stop (-27) leaves every service and record in place, so
+    # there is no table to read yet.
+    lifecycle --budget-ms $(((confirm_secs + 180) * 1000)) stop || exit $?
+    echo -e "${INFO}All recorded ChronoLog processes stopped.${NC}"
+    # Each keeper with the WAL on writes exit-summary as it exits.
+    if ! report_wal_exit_summaries "${CONF_DIR}"; then
         echo -e "${ERR}A keeper WAL has no exit-summary (the keeper crashed or was killed) or holds unconfirmed events; see the table above.${NC}"
         exit 1
     fi
@@ -572,14 +508,22 @@ stop() {
 restart() {
     echo -e "${INFO}Restarting keeper ${RESTART_KEEPER_INDEX}...${NC}"
     check_work_dir
-    restart_keeper "${RESTART_KEEPER_INDEX}" || exit 1
+    # 3: the keeper exited during startup (a WAL it cannot recover, for one);
+    # any other failure leaves the outcome unknown.
+    local status=0
+    restart_keeper "${RESTART_KEEPER_INDEX}" || status=$?
+    if [[ ${status} -eq 3 ]]; then
+        echo -e "${ERR}Keeper ${RESTART_KEEPER_INDEX} exited during startup; see its launch log.${NC}" >&2
+        exit 3
+    fi
+    [[ ${status} -eq 0 ]] || exit 1
     echo -e "${INFO}Keeper ${RESTART_KEEPER_INDEX} relaunched.${NC}"
 }
 
 clean() {
     echo -e "${INFO}Cleaning ChronoLog...${NC}"
     check_work_dir
-    check_execution_stopped
+    fence_mutation clean
     # First, so a refusal leaves the generated confs a restart needs.
     clean_wal_dirs "${WORK_DIR}/wal" "${force}" || exit 1
     echo -e "${DEBUG}Removing config files${NC}"

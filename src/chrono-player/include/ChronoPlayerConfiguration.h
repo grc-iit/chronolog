@@ -15,16 +15,22 @@ struct RpcServiceConf
 {
     RPCProviderConf RPC_CONF;
     uint32_t INGESTION_THREAD_COUNT = 1;
+    // Read for PlayerRecordingService only.
+    // A keeper partial chunk is pulled in pieces of at most this many bytes
+    // (transfer_piece_bytes); 4096 at least.
+    uint64_t TRANSFER_PIECE_BYTES = 1048576;
 
     [[nodiscard]] std::string to_String() const
     {
         return "[RPC_CONF: " + RPC_CONF.to_String() +
-               ", INGESTION_THREAD_COUNT: " + std::to_string(INGESTION_THREAD_COUNT) + "]";
+               ", INGESTION_THREAD_COUNT: " + std::to_string(INGESTION_THREAD_COUNT) +
+               ", TRANSFER_PIECE_BYTES: " + std::to_string(TRANSFER_PIECE_BYTES) + "]";
     }
 };
 
 struct PlayerConfiguration
 {
+    RpcTimeoutPolicy RPC_POLICY;
     uint32_t RECORDING_GROUP;
     RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
     RpcServiceConf PLAYBACK_SERVICE_CONF;
@@ -37,22 +43,22 @@ struct PlayerConfiguration
     PlayerConfiguration()
     {
         RECORDING_GROUP = 0;
-        DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
+        DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF = "ofi+tcp";
         DATA_STORE_ADMIN_SERVICE_CONF.IP = "127.0.0.1";
         DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT = 2222;
         DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID = 22;
 
-        PLAYBACK_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
+        PLAYBACK_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+tcp";
         PLAYBACK_SERVICE_CONF.RPC_CONF.IP = "127.0.0.1";
         PLAYBACK_SERVICE_CONF.RPC_CONF.BASE_PORT = 2525;
         PLAYBACK_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 25;
 
-        VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF = "ofi+sockets";
+        VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF = "ofi+tcp";
         VISOR_REGISTRY_SERVICE_CONF.IP = "127.0.0.1";
         VISOR_REGISTRY_SERVICE_CONF.BASE_PORT = 8888;
         VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID = 88;
 
-        RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+sockets";
+        RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF = "ofi+tcp";
         RECORDING_SERVICE_CONF.RPC_CONF.IP = "127.0.0.1";
         RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT = 7878;
         RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID = 78;

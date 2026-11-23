@@ -127,7 +127,7 @@ class TestChronoLogService:
         
         # Get connection parameters from environment or use defaults
         self.conn_params = {
-            "protocol": os.getenv("CHRONOLOG_PROTOCOL", "ofi+sockets"),
+            "protocol": os.getenv("CHRONOLOG_PROTOCOL", "ofi+tcp"),
             "portal_ip": os.getenv("CHRONOLOG_PORTAL_IP", "127.0.0.1"),
             "portal_port": int(os.getenv("CHRONOLOG_PORTAL_PORT", "5555")),
             "portal_provider_id": int(os.getenv("CHRONOLOG_PORTAL_PROVIDER_ID", "55")),
@@ -512,7 +512,7 @@ class TestConnectionConfig:
         from chronolog_service import ConnectionConfig
         
         config = ConnectionConfig()
-        assert config.protocol == "ofi+sockets"
+        assert config.protocol == "ofi+tcp"
         assert config.portal_ip == "127.0.0.1"
         assert config.portal_port == 5555
         assert config.portal_provider_id == 55

@@ -8,6 +8,7 @@
 #include <map>
 #include <cstdint>
 #include <fstream>
+#include <memory>
 
 #include "ClientConfiguration.h"
 #include "chronolog_types.h"
@@ -133,6 +134,28 @@ private:
     std::string logRecord;
 };
 
+// AcquireStory returns a borrowed, library-owned pointer. Keep a Client for
+// its context alive until all raw-handle calls return. Calls on a live handle
+// may run concurrently. Callers must synchronize those calls against
+// ReleaseStory, Disconnect (which auto-releases), and destruction of the last
+// Client owner. The raw pointer is invalid after release; do not delete it.
+// Work retained internally after a public call returns owns its own leases.
+// Those leases do not extend the lifetime of the caller's borrowed raw pointer.
+enum class AppendOutcome
+{
+    Acknowledged,
+    NotSubmitted,
+    Rejected,
+    Unconfirmed
+};
+struct AppendResult
+{
+    int status;
+    AppendOutcome outcome;
+    uint64_t timestamp;
+    uint32_t event_index;
+};
+
 // How far an event must get before log_event(record, options, event_time)
 // returns CL_SUCCESS.
 enum class Durability : uint8_t
@@ -157,6 +180,20 @@ public:
 
     virtual uint64_t log_event(std::string const&) = 0;
 
+    // Acknowledged means Keeper acceptance, not archive or disk durability.
+    // A stamped identity is retained even when the outcome is uncertain. Never
+    // retry an Unconfirmed result as though the Keeper rejected the event.
+    // Legacy subclasses cannot supply an index or distinguish a zero result.
+    // Their overridden code must cooperate with the caller's deadline.
+    virtual AppendResult append_event(std::string const& payload)
+    {
+        auto timestamp = log_event(payload);
+        return {timestamp ? CL_SUCCESS : CL_ERR_OUTCOME_UNCONFIRMED,
+                timestamp ? AppendOutcome::Acknowledged : AppendOutcome::Unconfirmed,
+                timestamp,
+                0};
+    }
+
     // Tail read: play back the most recent `n` events of this story directly
     // from the assigned keepers' in-memory tail (sealed-but-not-yet-extracted
     // events), bypassing the player/archive. The client gathers each keeper's
@@ -171,16 +208,28 @@ public:
     }
 
     // Write `record` and return CL_SUCCESS once the event reached
-    // options.durability; event_time receives the event's timestamp. Accepted
-    // returns the keeper's status, which log_event(record) discards.
-    // CL_ERR_DURABILITY_UNKNOWN means the event may be stored: no attempt was
-    // answered, an attempt went unanswered and a later answer could not rule
-    // out that it stored the event, or the keeper's WAL failed while writing
-    // it and could not erase it. A new log_event call creates a second event
-    // with a new identity. With that code event_time is still the event's
-    // timestamp, so the caller can check later whether it was stored; every
-    // other failure leaves event_time 0. The
-    // default implementation sends Accepted through log_event(record) and
+    // options.durability; event_time receives the event's timestamp.
+    //
+    // Accepted is the append_event path under the same append_ms budget, and
+    // returns its status: the keeper's status when it answered, otherwise
+    // CL_ERR_DEADLINE_EXCEEDED, CL_ERR_RPC_CAPACITY or, for an append sent but
+    // not answered, CL_ERR_OUTCOME_UNCONFIRMED.
+    //
+    // Durable sends record_event_durable. One budget of attempts * timeout_ms
+    // starts at the call and covers admission, lookup, every attempt and the
+    // pause after an attempt that failed at once. An attempt that gets no
+    // answer is sent again with the identical event to the same keeper, so
+    // the keeper stores it at most once. The whole write holds one RPC slot of
+    // the Client; with no slot free it returns CL_ERR_RPC_CAPACITY and sends
+    // nothing. CL_ERR_DURABILITY_UNKNOWN means the event may be stored: no
+    // attempt was answered, an attempt went unanswered and a later answer
+    // could not rule out that it stored the event, or the keeper's WAL failed
+    // while writing it and could not erase it. A new log_event call creates a
+    // second event with a new identity. With that code event_time is still the
+    // event's timestamp, so the caller can check later whether it was stored;
+    // every other failure leaves event_time 0.
+    //
+    // The default implementation sends Accepted through log_event(record) and
     // answers CL_ERR_DURABILITY_UNAVAILABLE to Durable, sending nothing.
     // A subclass that overrides only one log_event overload adds
     // `using StoryHandle::log_event;` so it does not hide the other.
@@ -199,9 +248,43 @@ class ChronologClientImpl;
 
 // Top-level Chronolog Client. Implementation details in ChronologClientImpl.
 //
+// ChronoLog must establish the process Argobots/Margo runtime first. Connect
+// returns CL_ERR_NATIVE_RUNTIME_UNSUPPORTED if a native runtime already exists;
+// that local rejection is permanent for the process and sends no Connect RPC.
+// Applications must not independently initialize/finalize Argobots or Margo,
+// or retain native work beyond ChronoLog's owned lifetime. A fixed lifecycle
+// thread owns cold startup/finalization; main is not an Argobots execution stream.
+// Before cold ABT startup, Margo's public environment setup restores its shipped
+// 2MiB ULT stacks and eight-stack cache, overwriting those ABT environment values.
+// A failed or incomplete native lifecycle remains owned and prevents replacement.
+// The client library must remain loaded until process exit because its fixed
+// lifecycle infrastructure thread has process lifetime.
+// The old MultiArgobots/HybridArgobots test pattern (Connect, then main calls
+// ABT_init/ABT_xstream_self) is unsupported. Ordinary C++ and MPI callers are
+// supported when MPI does not own Argobots (the shipped MPICH uses POSIX threads).
+// MPICH +argobots is unsupported in either startup order. Rebuild dependencies
+// and MPI applications when changing that backend; no MPI binary ABI is promised.
+// Rebuild applications after this private ownership-layout change.
+// Startup, native lookup and metadata RPCs consume the original entry budget.
+// Expiry before dispatch returns CL_ERR_DEADLINE_EXCEEDED; a dispatched mutation
+// without a confirmed result returns CL_ERR_OUTCOME_UNCONFIRMED. Later changes
+// naming that story or chronicle are then refused locally with the same code,
+// except that an AcquireStory or ReleaseStory with that outcome may be called
+// again: ChronoVisor's answer settles it (after a release, only a release).
+// Disconnect settles unknown acquires and releases. A closing/incomplete
+// context cannot be replaced.
+//
 // Disconnect() auto-releases any stories still acquired by the client so the
 // caller never has to walk its own acquisitions to clean up. The destructor
-// calls Disconnect() as best-effort; the Client is always safe to delete.
+// drops this wrapper's shared context lease without waiting for remote work.
+// When the last Client of a connected context is destroyed, the context's own
+// cleanup worker sends one Disconnect after its admitted work settles, with a
+// fresh control budget. If that Disconnect is not confirmed, including a
+// definite rejection, the context stays retained and this process cannot
+// create a replacement Client context. A Client constructed after the last
+// one is destroyed but before that cleanup finishes (up to one control
+// budget) also gets the closing context; its calls return
+// CL_ERR_RPC_CAPACITY for its whole life.
 class Client
 {
 public:
@@ -212,6 +295,14 @@ public:
     Client(ClientPortalServiceConf const&, ClientQueryServiceConf const&);
 
     ~Client();
+
+    // Shared by Client wrappers using the existing process singleton and its
+    // cached StoryHandles. Invalid values return CL_ERR_INVALID_ARG; admitted
+    // work or policy-lock contention returns CL_ERR_RPC_CAPACITY. Configure
+    // before the first Connect: entering Connect permanently freezes this
+    // context's policy, even if Connect fails or Disconnect later succeeds.
+    // Metadata operations consume one total control budget.
+    int SetRpcTimeoutPolicy(RpcTimeoutPolicy const&);
 
     int Connect();
 
@@ -227,6 +318,7 @@ public:
 
     int DestroyChronicle(std::string const& chronicle_name);
 
+    // The returned raw handle follows the lifetime/synchronization rules on StoryHandle.
     std::pair<int, StoryHandle*> AcquireStory(std::string const& chronicle_name, std::string const& story_name);
 
     int ReleaseStory(std::string const& chronicle_name, std::string const& story_name);
@@ -237,6 +329,13 @@ public:
 
     std::pair<int, std::vector<std::string>> ShowStories(std::string const& chronicle_name);
 
+    // One replay_ms budget (180000 ms by default) covers query admission,
+    // map/queue waits, lookup, submission and response completion. Each native
+    // submission has at most attempt_ms (5000 ms by default) and the remaining
+    // replay budget. Query expiry returns CL_ERR_QUERY_TIMED_OUT without later
+    // writes to event_series. Reader admission expiry can return CL_ERR_DEADLINE_EXCEEDED. At most two logical replay queries share this context;
+    // full admission or exhausted query identifiers returns CL_ERR_RPC_CAPACITY.
+    // Unknown native work keeps its capacity; a timeout does not cancel it.
     int ReplayStory(std::string const& chronicle,
                     std::string const& story,
                     uint64_t start,
@@ -247,7 +346,8 @@ public:
     // [start, end) range, with no client-side std::vector<Event> materialization.
     //
     // The callback runs on the query service receive thread; the caller is
-    // responsible for any locking it needs.
+    // responsible for any locking it needs. New callbacks stop at expiry; an
+    // already running callback must cooperate and finish before this call returns.
     //
     // The callback must not throw. If it does, the exception is caught and
     // logged, that event is skipped, and the remaining events in the response
@@ -268,7 +368,7 @@ public:
                     EventCallback callback);
 
 private:
-    ChronologClientImpl* chronologClientImpl;
+    std::shared_ptr<ChronologClientImpl> chronologClientImpl;
 };
 
 } //namespace chronolog

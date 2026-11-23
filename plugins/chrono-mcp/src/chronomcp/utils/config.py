@@ -14,7 +14,7 @@ CL_ERR_CHRONICLE_EXISTS = -6
 CL_ERR_PARTIAL_RESULT = -18
 
 # ChronoLog connection settings
-CHRONO_PROTOCOL = os.getenv("CHRONO_PROTOCOL", "ofi+sockets")
+CHRONO_PROTOCOL = os.getenv("CHRONO_PROTOCOL", "ofi+tcp")
 CHRONO_HOST = os.getenv("CHRONO_HOST", "127.0.0.1")
 CHRONO_PORT = int(os.getenv("CHRONO_PORT", 5555))
 CHRONO_TIMEOUT = int(os.getenv("CHRONO_TIMEOUT", 55))

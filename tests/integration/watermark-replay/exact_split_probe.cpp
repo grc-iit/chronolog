@@ -3,12 +3,13 @@
 // every event it returns, so the script can compare the two by identity.
 //
 //   write <chronicle> <story> <count> [hold_secs]
-//       acquires the story, logs <count> events and prints WROTE <timestamp>
-//       per event, then WRITTEN; keeps the story acquired for hold_secs
-//       (default 0), releases it, and prints WRITE_STATUS <CL_...>. Holding
-//       keeps the story active, so another client can acquire it without the
-//       visor notifying the grapher -- which would block while the grapher is
-//       stopped.
+//       acquires the story, appends <count> events and prints WROTE <timestamp>
+//       per acknowledged event, or WRITE_FAILED <index> <CL_...> <outcome>
+//       timestamp <ts> for one that was not, then WRITTEN; keeps the story
+//       acquired for hold_secs (default 0), releases it, and prints
+//       WRITE_STATUS <CL_...>. Holding keeps the story active, so another
+//       client can acquire it without the visor notifying the grapher --
+//       which would block while the grapher is stopped.
 //   replay <chronicle> <story>
 //       acquires the story, replays its whole range, releases it, and prints
 //       EVENT <timestamp> <client id> <index> per event, then
@@ -121,8 +122,18 @@ int main(int argc, char** argv)
         int const count = std::stoi(positional[3]);
         for(int i = 0; i < count; ++i)
         {
-            uint64_t const timestamp = acquire_result.second->log_event("exact-split event " + std::to_string(i));
-            std::cout << "WROTE " << timestamp << std::endl;
+            auto const result = acquire_result.second->append_event("exact-split event " + std::to_string(i));
+            if(result.status == chronolog::CL_SUCCESS)
+            {
+                std::cout << "WROTE " << result.timestamp << std::endl;
+            }
+            else
+            {
+                char const* const outcomes[] = {"Acknowledged", "NotSubmitted", "Rejected", "Unconfirmed"};
+                std::cout << "WRITE_FAILED " << i << " " << chronolog::to_string_client(result.status) << " "
+                          << outcomes[static_cast<int>(result.outcome)] << " timestamp " << result.timestamp
+                          << std::endl;
+            }
         }
         std::cout << "WRITTEN" << std::endl;
         int const hold_secs = (positional.size() > 4) ? std::stoi(positional[4]) : 0;

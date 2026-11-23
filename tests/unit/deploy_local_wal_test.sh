@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root=${1:?repository root required}
 script="$repo_root/tools/deploy/deploy_local.sh"
 fixture=$(mktemp -d /tmp/chronolog-deploy-wal-test.XXXXXX)
-trap 'pkill -f "$fixture/" || true; rm -rf -- "$fixture"' EXIT
+trap 'rm -rf -- "$fixture"' EXIT
 failures=0
 
 check() {
@@ -177,70 +177,89 @@ check "clean: the zero-summary WAL is gone" test ! -e "$wal_root/keeper-1"
 check "clean: no WAL root is fine" quiet clean_wal_dirs "$fixture/clean/none" false
 
 # Restart one keeper ---------------------------------------------------------------------------------
+# The deployment lifecycle (deployment_lifecycle.py) relaunches the keeper and
+# refuses while the recorded one still runs; test_deployment_lifecycle.py checks
+# that. Here it is a stand-in that logs its arguments.
 restart_conf="$fixture/restart/conf"
 MONITOR_DIR="$fixture/restart/monitor"
 mkdir -p "$restart_conf" "$MONITOR_DIR"
 generate_config_files 2 "$template" "$restart_conf" "$fixture/output" 1 "$MONITOR_DIR" "$client_template" \
     "$fixture/restart/wal" > /dev/null
 before=$(md5sum "$restart_conf"/*.json)
-KEEPER_BIN="$fixture/restart/fake-keeper"
+KEEPER_BIN="$fixture/restart/chrono-keeper"
 CONF_DIR="$restart_conf"
-printf '#!/bin/sh\necho "$@" > "%s/args"\n' "$fixture/restart" > "$KEEPER_BIN"
-chmod +x "$KEEPER_BIN"
+lifecycle() { echo "$*" > "$fixture/restart/args"; }
 restart_keeper 2 > /dev/null
-for _ in $(seq 50); do [[ -s "$fixture/restart/args" ]] && break; sleep 0.1; done
-check "restart: keeper 2 runs with its generated conf" \
-    test "$(cat "$fixture/restart/args" 2>/dev/null)" = "--config $restart_conf/chrono-keeper-conf-2.json"
+check "restart: the lifecycle relaunches keeper 2 with its generated conf and launch log" \
+    test "$(cat "$fixture/restart/args" 2>/dev/null)" = "restart-keeper --executable $KEEPER_BIN --config $restart_conf/chrono-keeper-conf-2.json --output $MONITOR_DIR/chrono-keeper-2.launch.log"
 check "restart: no conf regenerated" test "$(md5sum "$restart_conf"/*.json)" = "$before"
+rm -f "$fixture/restart/args"
 if restart_keeper 3 > /dev/null 2>&1; then rc=0; else rc=$?; fi
 check "restart: a keeper without a generated conf is refused" test "$rc" -ne 0
+check "restart: nothing relaunched for a keeper without a conf" test ! -e "$fixture/restart/args"
+lifecycle() { return 27; }
+if restart_keeper 2 > /dev/null 2>&1; then rc=0; else rc=$?; fi
+check "restart: a refused relaunch fails" test "$rc" -ne 0
+unset -f lifecycle
 
 # Given binaries -------------------------------------------------------------------------------------
 # Runs the whole script on a work dir whose bin/ holds the "installed" binaries,
-# with -v/-g/-p/-a naming others: start, stop and --restart-keeper must use the
-# given ones. Every fake appends "<its path> <args>" to runs.log; the given
-# keeper stays up until SIGTERM so stop has something to stop.
+# with -v/-g/-p/-a naming others: start, stop and --restart-keeper must hand the
+# given ones to the lifecycle. A python3 first in PATH stands in for
+# deployment_lifecycle.py: it appends its arguments to calls.log, runs the
+# command a fenced start or clean wraps, and succeeds.
 given_work="$fixture/given/work"
 given_bin="$fixture/given/bin"
-runs="$fixture/given/runs.log"
-mkdir -p "$given_work/bin" "$given_work/lib" "$given_work/conf" "$given_bin"
+calls="$fixture/given/calls.log"
+mkdir -p "$given_work/bin" "$given_work/lib" "$given_work/conf" "$given_bin" "$fixture/given/path"
 cp "$template" "$given_work/conf/default-chrono-conf.json"
 cp "$client_template" "$given_work/conf/default-chrono-client-conf.json"
 for name in chrono-visor chrono-grapher chrono-player chrono-keeper; do
     for dir in "$given_work/bin" "$given_bin"; do
-        printf '#!/bin/sh\necho "$0 $*" >> "%s"\n' "$runs" > "$dir/$name"
+        printf '#!/bin/sh\nexit 0\n' > "$dir/$name"
         chmod +x "$dir/$name"
     done
 done
-cat > "$given_bin/chrono-keeper" << EOF
-#!/bin/sh
-echo "\$0 \$*" >> "$runs"
-trap 'echo "\$0 stopped" >> "$runs"; exit 0' TERM
-while :; do sleep 0.1; done
-EOF
+cat > "$fixture/given/path/python3" << FAKE
+#!/usr/bin/env bash
+shift
+echo "\$*" >> "$calls"
+args=("\$@")
+for i in "\${!args[@]}"; do
+    if [[ "\${args[\$i]}" == run-start || "\${args[\$i]}" == run-clean ]]; then
+        CHRONOLOG_DEPLOYMENT_GUARD=fake exec "\${args[@]:\$((i + 2))}"
+    fi
+done
+exit 0
+FAKE
+chmod +x "$fixture/given/path/python3"
+run_script() { PATH="$fixture/given/path:$PATH" bash "$script" "$@"; }
 given_args=(-w "$given_work" -v "$given_bin/chrono-visor" -g "$given_bin/chrono-grapher"
     -p "$given_bin/chrono-keeper" -a "$given_bin/chrono-player")
-keeper_run="$given_bin/chrono-keeper --config $given_work/conf/chrono-keeper-conf-1.json"
-runs_of() { grep -cxF "$1" "$runs" 2> /dev/null || true; }
-ran() { test "$(runs_of "$1")" -ge 1; }
-wait_runs_of() { for _ in $(seq 50); do [[ $(runs_of "$1") -ge $2 ]] && break; sleep 0.1; done; }
+called() { grep -qF -- "$1" "$calls" 2> /dev/null; }
+launched() { # BIN CONF COMPONENT: start asked the lifecycle to launch BIN with CONF
+    called "launch --executable $1 --config $2 --component $3 "
+}
 
-bash "$script" -d "${given_args[@]}" > "$fixture/given/start.out" 2>&1 || true
-wait_runs_of "$keeper_run" 1
-check "given binaries: start runs the given keeper" ran "$keeper_run"
-check "given binaries: start runs the given visor" \
-    ran "$given_bin/chrono-visor --config $given_work/conf/chrono-visor-conf.json"
-check "given binaries: start runs the given grapher" \
-    ran "$given_bin/chrono-grapher --config $given_work/conf/chrono-grapher-conf-1.json"
-check "given binaries: start runs the given player" \
-    ran "$given_bin/chrono-player --config $given_work/conf/chrono-player-conf-1.json"
-bash "$script" -s "${given_args[@]}" > "$fixture/given/stop.out" 2>&1 || true
-check "given binaries: stop stops the given keeper" ran "$given_bin/chrono-keeper stopped"
-bash "$script" --restart-keeper 1 "${given_args[@]}" > "$fixture/given/restart.out" 2>&1 || true
-wait_runs_of "$keeper_run" 2
-check "given binaries: --restart-keeper runs the given keeper" test "$(runs_of "$keeper_run")" -eq 2
-bash "$script" -s "${given_args[@]}" > /dev/null 2>&1 || true
-check "given binaries: the installed binaries never ran" test "$(grep -c "^$given_work/bin/" "$runs")" -eq 0
+run_script -d "${given_args[@]}" > "$fixture/given/start.out" 2>&1 || true
+check "given binaries: start launches the given keeper" \
+    launched "$given_bin/chrono-keeper" "$given_work/conf/chrono-keeper-conf-1.json" keeper
+check "given binaries: start launches the given visor" \
+    launched "$given_bin/chrono-visor" "$given_work/conf/chrono-visor-conf.json" visor
+check "given binaries: start launches the given grapher" \
+    launched "$given_bin/chrono-grapher" "$given_work/conf/chrono-grapher-conf-1.json" grapher
+check "given binaries: start launches the given player" \
+    launched "$given_bin/chrono-player" "$given_work/conf/chrono-player-conf-1.json" player
+check "given binaries: start fences on the given binaries" called "--occupied-executable $given_bin/chrono-keeper "
+run_script -s "${given_args[@]}" > "$fixture/given/stop.out" 2>&1 || true
+# The stop budget covers the keeper's confirmation wait (150 s in the
+# template when it sets none) plus 180 s.
+check "given binaries: stop runs the managed stop" \
+    grep -qE -- "--work-dir $given_work --budget-ms [0-9]+ stop" "$calls"
+run_script --restart-keeper 1 "${given_args[@]}" > "$fixture/given/restart.out" 2>&1 || true
+check "given binaries: --restart-keeper relaunches the given keeper" \
+    called "restart-keeper --executable $given_bin/chrono-keeper --config $given_work/conf/chrono-keeper-conf-1.json "
+check "given binaries: the installed binaries were never named" test "$(grep -c "$given_work/bin/" "$calls")" -eq 0
 
 # Given confs with -w --------------------------------------------------------------------------------
 # -f and -n name templates outside work_dir/conf, which holds none: start must
@@ -249,32 +268,32 @@ check "given binaries: the installed binaries never ran" test "$(grep -c "^$give
 alt_work="$fixture/alt/work"
 alt_conf="$fixture/alt/conf"
 mkdir -p "$alt_work/bin" "$alt_work/lib" "$alt_work/conf" "$alt_conf" "$fixture/alt/client"
-cp "$template" "$alt_conf/my-conf.json"
+# A confirmation wait of its own, so the stop budget shows which template the
+# stop read: (20 + 180) * 1000.
+jq '.chrono_keeper.DataStoreInternals.shutdown_confirm_timeout_secs = 20' "$template" > "$alt_conf/my-conf.json"
 jq '.chrono_client.marker = "alt"' "$client_template" > "$fixture/alt/client/my-client.json"
 alt_args=(-w "$alt_work" -f "$alt_conf/my-conf.json" -n "$fixture/alt/client/my-client.json"
     -v "$given_bin/chrono-visor" -g "$given_bin/chrono-grapher" -p "$given_bin/chrono-keeper" -a "$given_bin/chrono-player")
-alt_keeper_run="$given_bin/chrono-keeper --config $alt_conf/chrono-keeper-conf-1.json"
-bash "$script" -d --wal "${alt_args[@]}" > "$fixture/alt/start.out" 2>&1 || true
-wait_runs_of "$alt_keeper_run" 1
-check "-f with -w: start runs the keeper with a conf generated next to the -f template" ran "$alt_keeper_run"
-check "-f with -w: start runs the visor with a conf generated next to the -f template" \
-    ran "$given_bin/chrono-visor --config $alt_conf/chrono-visor-conf.json"
+: > "$calls"
+run_script -d --wal "${alt_args[@]}" > "$fixture/alt/start.out" 2>&1 || true
+check "-f with -w: start launches the keeper with a conf generated next to the -f template" \
+    launched "$given_bin/chrono-keeper" "$alt_conf/chrono-keeper-conf-1.json" keeper
+check "-f with -w: start launches the visor with a conf generated next to the -f template" \
+    launched "$given_bin/chrono-visor" "$alt_conf/chrono-visor-conf.json" visor
 check "-n with -w: the client conf is generated from the -n template" \
     test "$(jq -r '.chrono_client.marker' "$alt_conf/chrono-client-conf.json" 2> /dev/null)" = alt
 check "-f with -w: nothing generated in work_dir/conf" test -z "$(ls -A "$alt_work/conf")"
 # The fake keeper writes no exit-summary, so stop reports keeper 1 as missing:
 # only a stop that reads the -f conf directory finds that keeper's WAL.
-bash "$script" -s "${alt_args[@]}" > "$fixture/alt/stop.out" 2>&1 || true
-check "-f with -w: stop stops the keeper" ran "$given_bin/chrono-keeper stopped"
+run_script -s "${alt_args[@]}" > "$fixture/alt/stop.out" 2>&1 || true
+check "-f with -w: stop runs the managed stop with a budget from the -f template" \
+    called "--work-dir $alt_work --budget-ms 200000 stop"
 check "-f with -w: stop reads the keeper WAL from the -f conf directory" grep -q 'keeper-1 .*missing' "$fixture/alt/stop.out"
-bash "$script" --restart-keeper 1 "${alt_args[@]}" > "$fixture/alt/restart.out" 2>&1 || true
-wait_runs_of "$alt_keeper_run" 2
+run_script --restart-keeper 1 "${alt_args[@]}" > "$fixture/alt/restart.out" 2>&1 || true
 check "-f with -w: --restart-keeper relaunches the keeper with the -f conf directory's conf" \
-    test "$(runs_of "$alt_keeper_run")" -eq 2
-bash "$script" -s "${alt_args[@]}" > /dev/null 2>&1 || true
-# clean refuses while any chrono process runs on the host, so run its function
-# with that check left out. The confs start generated are there whether or not
-# start honored -f.
+    called "restart-keeper --executable $given_bin/chrono-keeper --config $alt_conf/chrono-keeper-conf-1.json "
+# clean is fenced by the lifecycle, so run its function with the fence left
+# out. The confs start generated are there whether or not start honored -f.
 for name in chrono-visor-conf.json chrono-keeper-conf-1.json chrono-client-conf.json; do
     [[ -f "$alt_conf/$name" ]] || echo '{}' > "$alt_conf/$name"
 done
@@ -282,7 +301,7 @@ done
     for fn in clean check_work_dir refresh_paths_for_work_dir; do
         source <(sed -n "/^${fn}() {/,/^}/p" "$script")
     done
-    check_execution_stopped() { :; }
+    fence_mutation() { :; }
     clean_output_dir() { :; }
     WORK_DIR_USER_SET=false OUTPUT_DIR_USER_SET=false MONITOR_DIR_USER_SET=false
     VISOR_BIN_USER_SET=false KEEPER_BIN_USER_SET=false GRAPHER_BIN_USER_SET=false PLAYER_BIN_USER_SET=false

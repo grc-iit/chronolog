@@ -12,8 +12,17 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object* json_conf)
         return chl::CL_ERR_INVALID_CONF;
     }
 
+    RpcTimeoutPolicy policy;
+    json_object* policy_object = nullptr;
+    if(json_object_object_get_ex(json_conf, "RpcPolicy", &policy_object) &&
+       parseRpcPolicyConf(policy_object, policy) != chl::CL_SUCCESS)
+        return chl::CL_ERR_INVALID_CONF;
+    RPC_POLICY = policy;
+
     json_object_object_foreach(json_conf, key, val)
     {
+        if(strcmp(key, "RpcPolicy") == 0)
+            continue;
         if(strcmp(key, "RecordingGroup") == 0)
         {
             if(!json_object_is_type(val, json_type_int))
@@ -105,6 +114,17 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object* json_conf)
                     }
                     int value = json_object_get_int(val);
                     RECORDING_SERVICE_CONF.INGESTION_THREAD_COUNT = (value >= 1 ? value : 1);
+                }
+                else if(strcmp(key, "transfer_piece_bytes") == 0)
+                {
+                    if(!json_object_is_type(val, json_type_int) || json_object_get_int64(val) < 4096)
+                    {
+                        std::cerr << "[PlayerConfiguration] Invalid 'transfer_piece_bytes': expected an integer of "
+                                     "4096 or more"
+                                  << std::endl;
+                        return chl::CL_ERR_INVALID_CONF;
+                    }
+                    RECORDING_SERVICE_CONF.TRANSFER_PIECE_BYTES = static_cast<uint64_t>(json_object_get_int64(val));
                 }
                 else
                 {

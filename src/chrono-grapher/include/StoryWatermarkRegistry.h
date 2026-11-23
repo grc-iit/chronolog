@@ -2,11 +2,16 @@
 #define CHRONOLOG_STORY_WATERMARK_REGISTRY_H
 
 #include <chrono>
+#include <atomic>
+#include <memory>
+#include <RpcRuntime.h>
 #include <cstdint>
 #include <map>
 #include <mutex>
 #include <random>
 #include <set>
+#include <string>
+#include <tuple>
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
@@ -38,6 +43,68 @@ namespace chronolog
 class StoryWatermarkRegistry: public ReceiptTracker
 {
 public:
+    // Local identities only; no epoch is added to the RPC or chunk wire.
+    using Incarnation = std::shared_ptr<std::atomic<bool>>;
+    using Contributions = std::map<StoryId, Incarnation>;
+    struct Publication
+    {
+        std::map<StoryId, StoryWatermarkReport> reports;
+        std::map<StoryId, Incarnation> snapshots;
+        std::map<StoryId, Incarnation> versions; // Local complete-envelope identity only.
+    };
+    Incarnation contributorToken(StoryId story)
+    {
+        std::lock_guard<std::timed_mutex> lock(mtx);
+        return publicationState(story).incarnation;
+    }
+    // Called only by admitted work. Copy the current complete envelope, never
+    // consume dirty state or build one retained copy per failed/deferred round.
+    int snapshotFor(Contributions const& contributions, rpc::RpcDeadline const& deadline, Publication& out)
+    {
+        std::unique_lock<std::timed_mutex> lock(mtx, std::defer_lock);
+        if(!lock.try_lock_until(deadline.expiresAt()) || deadline.expired())
+            return CL_ERR_DEADLINE_EXCEEDED;
+        for(auto const& contribution: contributions)
+        {
+            auto pub = publications.find(contribution.first);
+            if(pub == publications.end() || pub->second.incarnation != contribution.second ||
+               !contribution.second->load(std::memory_order_acquire))
+                continue;
+            auto entry = stories.find(contribution.first);
+            if(!pub->second.dropped && entry == stories.end())
+                continue;
+            StoryWatermarkReport report;
+            report.grapher_instance = instance;
+            report.watermark = pub->second.dropped ? kStoryDroppedWatermark : entry->second.w;
+            auto receipt = receipts.find(contribution.first);
+            report.highest_receipt = pub->second.dropped
+                                             ? pub->second.dropHighest
+                                             : (receipt == receipts.end() ? 0 : receipt->second.last_assigned);
+            if(!pub->second.dropped && receipt != receipts.end())
+                for(auto const& pending: receipt->second.pending) report.pending_receipts.push_back(pending.first);
+            out.reports.emplace(contribution.first, std::move(report));
+            out.snapshots.emplace(contribution.first, pub->second.snapshot);
+            out.versions.emplace(contribution.first, pub->second.version);
+        }
+        return CL_SUCCESS;
+    }
+    // Linearize dispatch reservation against local drop/recreate invalidation.
+    // Network access happens after releasing this lock. An already reserved
+    // dispatch cannot be revoked; the unchanged wire has no story incarnation.
+    int beginReport(Publication& publication, rpc::OperationContext& operation)
+    {
+        std::unique_lock<std::timed_mutex> lock(mtx, std::defer_lock);
+        if(!lock.try_lock_until(operation.deadline().expiresAt()) || operation.deadline().expired())
+            return CL_ERR_DEADLINE_EXCEEDED;
+        for(auto it = publication.reports.begin(); it != publication.reports.end();)
+        {
+            if(!publication.snapshots.at(it->first)->load(std::memory_order_acquire))
+                it = publication.reports.erase(it);
+            else
+                ++it;
+        }
+        return publication.reports.empty() || operation.tryBeginDispatch() ? CL_SUCCESS : CL_ERR_DEADLINE_EXCEEDED;
+    }
     // Anchor for contiguity. Called from GrapherDataStore::startStoryRecording.
     // If the story is already known with W >= start_time, keeps W (re-acquired
     // story). If start_time > current W, the gap [W, start_time) is treated as
@@ -50,7 +117,15 @@ public:
     // stands and catches up through advancePersisted alone.
     void registerStory(StoryId const& story_id, uint64_t start_time, bool fresh_pipeline = false)
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::timed_mutex> lock(mtx);
+        auto& publication = publicationState(story_id);
+        if(publication.dropped)
+        {
+            publication.incarnation->store(false, std::memory_order_release);
+            publication.snapshot->store(false, std::memory_order_release);
+            publication.version->store(false, std::memory_order_release);
+            publication = PublicationState{};
+        }
         auto iter = stories.find(story_id);
         if(iter != stories.end() && dropped.count(story_id) != 0)
         {
@@ -110,6 +185,7 @@ public:
                      start_time,
                      entry.w);
             entry.w = start_time;
+            envelopeChanged(story_id);
             dirty.insert(story_id);
         }
         // else: re-acquired story, W stands
@@ -138,7 +214,23 @@ public:
     // epoch) to close properly; see the destroyed-story retention follow-up.
     void dropStory(StoryId const& story_id)
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::timed_mutex> lock(mtx);
+        envelopeChanged(story_id);
+        auto& publication = publicationState(story_id);
+        if(!publication.dropped)
+        {
+            publication.snapshot->store(false, std::memory_order_release);
+            publication.snapshot = std::make_shared<std::atomic<bool>>(true);
+        }
+        publication.dropped = true;
+        auto receipt = receipts.find(story_id);
+        publication.dropHighest = receipt == receipts.end() ? 0 : receipt->second.last_assigned;
+        if(receipt != receipts.end())
+        {
+            // chunks of a destroyed story are refused, not answered with a receipt
+            receipt->second.deliveries.clear();
+            receipt->second.deliveryOf.clear();
+        }
         dropped.insert(story_id);
         dirty.insert(story_id);
         auto iter = stories.find(story_id);
@@ -174,7 +266,7 @@ public:
     // re-registration gap coverage.
     void persistFailed(StoryId const& story_id)
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::timed_mutex> lock(mtx);
         auto iter = stories.find(story_id);
         if(iter == stories.end())
         {
@@ -204,7 +296,7 @@ public:
         {
             return;
         }
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::timed_mutex> lock(mtx);
         auto iter = stories.find(story_id);
         if(iter == stories.end())
         {
@@ -215,6 +307,7 @@ public:
             entry.w = start;
             iter = stories.emplace(story_id, std::move(entry)).first;
         }
+        publicationState(story_id);
         Entry& entry = iter->second;
         if(end <= entry.w)
         {
@@ -234,6 +327,7 @@ public:
         absorbContiguous(entry);
         if(entry.w != previous_w)
         {
+            envelopeChanged(story_id);
             dirty.insert(story_id);
             LOG_INFO("[StoryWatermarkRegistry] StoryId={} W advanced {} -> {}", story_id, previous_w, entry.w);
         }
@@ -250,7 +344,7 @@ public:
     // Current W for the story; 0 if unknown.
     uint64_t getPersisted(StoryId const& story_id) const
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::timed_mutex> lock(mtx);
         auto iter = stories.find(story_id);
         return (iter == stories.end()) ? 0 : iter->second.w;
     }
@@ -262,20 +356,120 @@ public:
     // A chunk for the story arrived. Receipts are numbered from one counter for
     // every story (see lastReceipt) and stay pending until the chunk is merged
     // and every chunk holding its events is written.
-    uint64_t assignReceipt(StoryId const& story_id)
+    uint64_t assignReceipt(StoryId const& story_id, Incarnation* incarnation = nullptr)
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::timed_mutex> lock(mtx);
+        return assignLocked(story_id, incarnation);
+    }
+
+    // A keeper partial chunk as one keeper delivered it: the keeper that
+    // reported it, its range, and its bytes (size, the CRC-32C the keeper
+    // sent, and a 64-bit hash the grapher takes).
+    struct Delivery
+    {
+        std::string reporter;
+        uint64_t start = 0, end = 0, size = 0;
+        uint32_t checksum = 0;
+        uint64_t hash = 0;
+        bool operator<(Delivery const& other) const
+        {
+            return std::tie(reporter, start, end, size, checksum, hash) <
+                   std::tie(other.reporter, other.start, other.end, other.size, other.checksum, other.hash);
+        }
+    };
+
+    // How long a delivery is remembered once its receipt is written
+    // (duplicate_receipt_hold_secs).
+    void setDeliveryHold(std::chrono::seconds hold)
+    {
+        std::lock_guard<std::timed_mutex> lock(mtx);
+        deliveryHold = hold;
+    }
+
+    // The receipt for a delivery of a keeper partial chunk. One with the same
+    // reporter, range and bytes as a delivery this instance already received
+    // and wrote gets that delivery's receipt, and fresh is false: its events
+    // are on disk, so the caller ingests nothing and answers the receipt, and
+    // the keeper can free the chunk. Otherwise a new receipt is assigned, as
+    // assignReceipt does, and this delivery is the one remembered: until its
+    // receipt is written and for the hold after that. A duplicate whose first
+    // delivery is still unwritten is ingested again, because the keeper's
+    // stall-age resend (watermark_resend_timeout_secs) is how events whose
+    // write failed get written; the hold should exceed that age. A restarted
+    // grapher remembers nothing; a resend is then ingested again, and reads
+    // drop the copies by EventSequence, as before.
+    uint64_t receiptForDelivery(StoryId const& story_id,
+                                Delivery const& delivery,
+                                bool& fresh,
+                                Incarnation* incarnation = nullptr)
+    {
+        std::lock_guard<std::timed_mutex> lock(mtx);
+        StoryReceipts& story = receipts[story_id];
+        pruneDeliveries(story, std::chrono::steady_clock::now());
+        auto found = story.deliveries.find(delivery);
+        if(found != story.deliveries.end() && found->second.written != std::chrono::steady_clock::time_point{})
+        {
+            fresh = false;
+            if(incarnation)
+                *incarnation = publicationState(story_id).incarnation;
+            return found->second.receipt;
+        }
+        if(found != story.deliveries.end())
+        {
+            story.deliveryOf.erase(found->second.receipt);
+            story.deliveries.erase(found);
+        }
+        fresh = true;
+        uint64_t const receipt = assignLocked(story_id, incarnation);
+        auto remembered = story.deliveries.emplace(delivery, Remembered{receipt, {}}).first;
+        story.deliveryOf.emplace(receipt, remembered);
+        return receipt;
+    }
+
+    // Forgets a fresh delivery whose chunk was not ingested, so the keeper's
+    // next send of it is.
+    void forgetDelivery(StoryId const& story_id, Delivery const& delivery)
+    {
+        std::lock_guard<std::timed_mutex> lock(mtx);
+        auto story = receipts.find(story_id);
+        if(story == receipts.end())
+            return;
+        auto found = story->second.deliveries.find(delivery);
+        if(found == story->second.deliveries.end())
+            return;
+        story->second.deliveryOf.erase(found->second.receipt);
+        story->second.deliveries.erase(found);
+    }
+
+    // Deliveries remembered for the story, for tests.
+    std::size_t rememberedDeliveries(StoryId const& story_id) const
+    {
+        std::lock_guard<std::timed_mutex> lock(mtx);
+        auto story = receipts.find(story_id);
+        return story == receipts.end() ? 0 : story->second.deliveries.size();
+    }
+
+private:
+    uint64_t assignLocked(StoryId const& story_id, Incarnation* incarnation)
+    {
+        auto& publication = publicationState(story_id);
+        if(incarnation)
+            *incarnation = publication.incarnation;
         StoryReceipts& story = receipts[story_id];
         uint64_t const receipt = ++lastReceipt;
         story.last_assigned = receipt;
         story.pending.emplace(receipt, ReceiptState{});
+        if(publication.dropped)
+            publication.dropHighest = receipt;
+        envelopeChanged(story_id);
         return receipt;
     }
 
+public:
     // A timeline window or salvage chunk now holds events of the receipt.
     void holdReceipt(StoryId const& story_id, uint64_t receipt) override
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::timed_mutex> lock(mtx);
         ReceiptState* state = findPending(story_id, receipt);
         if(state != nullptr)
         {
@@ -286,7 +480,7 @@ public:
     // One chunk holding events of the receipt was written.
     void releaseReceipt(StoryId const& story_id, uint64_t receipt) override
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::timed_mutex> lock(mtx);
         ReceiptState* state = findPending(story_id, receipt);
         if(state != nullptr && state->holders > 0)
         {
@@ -298,7 +492,7 @@ public:
     // The receipt's chunk is merged and none of its events was discarded.
     void receiptMerged(StoryId const& story_id, uint64_t receipt) override
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::timed_mutex> lock(mtx);
         ReceiptState* state = findPending(story_id, receipt);
         if(state != nullptr)
         {
@@ -314,7 +508,7 @@ public:
     // been registered anew since.
     void markUndelivered(std::map<StoryId, StoryWatermarkReport> const& reports)
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::timed_mutex> lock(mtx);
         for(auto const& entry: reports)
         {
             bool const known = stories.find(entry.first) != stories.end();
@@ -334,7 +528,7 @@ public:
     // dirty set.
     std::map<StoryId, StoryWatermarkReport> snapshotDirty()
     {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::timed_mutex> lock(mtx);
         std::map<StoryId, StoryWatermarkReport> snapshot;
         for(auto const& story_id: dirty)
         {
@@ -385,6 +579,27 @@ public:
     }
 
 private:
+    friend struct WatermarkRegistryTestAccess;
+    struct PublicationState
+    {
+        Incarnation incarnation = std::make_shared<std::atomic<bool>>(true);
+        Incarnation snapshot = std::make_shared<std::atomic<bool>>(true);
+        Incarnation version = std::make_shared<std::atomic<bool>>(true);
+        bool dropped = false;
+        uint64_t dropHighest = 0;
+    };
+    PublicationState& publicationState(StoryId story) { return publications[story]; }
+    void envelopeChanged(StoryId story)
+    {
+        auto& version = publicationState(story).version;
+        // No retained snapshot needs invalidation when this is the only owner.
+        if(version.use_count() != 1)
+        {
+            version->store(false, std::memory_order_release);
+            version = std::make_shared<std::atomic<bool>>(true);
+        }
+    }
+    std::map<StoryId, PublicationState> publications;
     struct Entry
     {
         uint64_t anchor = 0;
@@ -425,11 +640,35 @@ private:
 
     // Kept apart from Entry: a chunk can arrive before its story registers,
     // and an Entry created then would anchor W at 0.
+    struct Remembered
+    {
+        uint64_t receipt = 0;
+        // when the receipt was written; the epoch while it is pending
+        std::chrono::steady_clock::time_point written{};
+    };
+
     struct StoryReceipts
     {
         uint64_t last_assigned = 0;
         std::map<uint64_t, ReceiptState> pending;
+        std::map<Delivery, Remembered> deliveries;
+        std::map<uint64_t, std::map<Delivery, Remembered>::iterator> deliveryOf;
     };
+
+    void pruneDeliveries(StoryReceipts& story, std::chrono::steady_clock::time_point now)
+    {
+        for(auto it = story.deliveries.begin(); it != story.deliveries.end();)
+        {
+            auto const written = it->second.written;
+            if(written != std::chrono::steady_clock::time_point{} && now - written >= deliveryHold)
+            {
+                story.deliveryOf.erase(it->second.receipt);
+                it = story.deliveries.erase(it);
+            }
+            else
+                ++it;
+        }
+    }
 
     ReceiptState* findPending(StoryId const& story_id, uint64_t receipt)
     {
@@ -448,7 +687,12 @@ private:
         {
             return;
         }
-        receipts[story_id].pending.erase(receipt);
+        auto& story = receipts[story_id];
+        story.pending.erase(receipt);
+        auto remembered = story.deliveryOf.find(receipt);
+        if(remembered != story.deliveryOf.end())
+            remembered->second->second.written = std::chrono::steady_clock::now();
+        envelopeChanged(story_id);
         dirty.insert(story_id);
     }
 
@@ -467,7 +711,8 @@ private:
     // still holding the old story's view takes any number up to that view's
     // highest as written unless a report lists it.
     uint64_t lastReceipt = 0;
-    mutable std::mutex mtx;
+    std::chrono::seconds deliveryHold{600};
+    mutable std::timed_mutex mtx;
     std::map<StoryId, Entry> stories;
     std::map<StoryId, StoryReceipts> receipts;
     std::set<StoryId> dirty;

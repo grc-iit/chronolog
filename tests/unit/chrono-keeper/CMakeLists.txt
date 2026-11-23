@@ -84,32 +84,6 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_extraction_chain_test DESTINATION tests)
 endif()
 
-# The keeper's extraction engine (GTest) — a chunk transfer must complete while
-# the primary execution stream is blocked, as the keeper's main thread is in
-# its stats loop. Real engines on the loopback interface.
-add_executable(keeper_extraction_engine_test
-    chrono_keeper_extraction_engine_test.cpp
-)
-
-target_include_directories(keeper_extraction_engine_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
-    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
-    ${CMAKE_SOURCE_DIR}/client/cpp/include
-)
-
-target_link_libraries(keeper_extraction_engine_test PRIVATE
-    GTest::gtest_main
-    chrono_common
-    chronolog_client
-    thallium
-)
-
-set_target_properties(keeper_extraction_engine_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-extraction-engine)
-gtest_discover_tests(keeper_extraction_engine_test TEST_PREFIX "Unit_ChronoKeeper_" PROPERTIES TIMEOUT 60)
-if(CHRONOLOG_INSTALL_TESTS)
-    chronolog_install_target(keeper_extraction_engine_test DESTINATION tests)
-endif()
-
 # Release-before-decay data-loss reproduction. KeeperDataStore/KeeperStoryPipeline
 # are only compiled into the chrono_keeper executable (no shared lib), so pull the
 # two .cpp files directly into the test target.
@@ -215,6 +189,26 @@ gtest_discover_tests(keeper_orphan_recovery_test TEST_PREFIX "Unit_ChronoKeeper_
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_orphan_recovery_test DESTINATION tests)
 endif()
+
+add_executable(keeper_rpc_policy_configuration_test
+    rpc_policy_configuration_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/ChronoKeeperConfiguration.cpp
+)
+target_include_directories(keeper_rpc_policy_configuration_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+target_link_libraries(keeper_rpc_policy_configuration_test PRIVATE GTest::gtest_main chrono_common chronolog_client)
+gtest_discover_tests(keeper_rpc_policy_configuration_test TEST_PREFIX "Unit_ChronoKeeper_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_rpc_policy_configuration_test DESTINATION tests)
+endif()
+
+add_executable(registry_lifecycle_test registry_lifecycle_test.cpp)
+target_include_directories(registry_lifecycle_test PRIVATE ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include)
+target_link_libraries(registry_lifecycle_test PRIVATE GTest::gtest_main chrono_common chrono_rpc chronolog_client thallium)
+gtest_discover_tests(registry_lifecycle_test TEST_PREFIX "Integration_ChronologRegistryLifecycle_" PROPERTIES TIMEOUT 20)
 
 # WalFileSink (GTest) — the POSIX file layer under the keeper WAL and the
 # fault-injecting test sink, in a temporary directory. Thallium for the test

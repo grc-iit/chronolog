@@ -1,232 +1,262 @@
-#include <cstddef>
-#include <map>
-#include <utility>
-#include <vector>
-
-#include <chrono_monitor.h>
-#include <chronolog_types.h>
-#include <client_errcode.h>
-
-#include "KeeperRecordingClient.h"
 #include "KeeperTailReader.h"
-
-// Tail read: two-phase scatter/gather across the story's assigned keepers.
-int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keepers,
-                                 StoryId const& story_id,
-                                 std::size_t n,
-                                 std::vector<Event>& events)
+#include "KeeperRecordingClient.h"
+#include <atomic>
+#include <map>
+#include <thread>
+namespace chronolog
 {
-    events.clear();
-    if(keepers.empty())
+namespace
+{
+struct TailReply
+{
+    int status;
+    std::vector<LogEvent> events;
+};
+// One keeper of the story: its sequences, written by its sequences job and read
+// by the coordinator once ready is set, and the sequences chosen from it.
+struct TailSource
+{
+    std::atomic<bool> ready{false};
+    int status = CL_ERR_UNKNOWN;
+    bool timedOut = false;
+    std::vector<EventSequence> sequences, selection;
+};
+struct TailShared
+{
+    TailShared(std::shared_ptr<void> retained, size_t count)
+        : retention(std::move(retained))
+        , sources(count)
+    {}
+    std::shared_ptr<void> retention;
+    std::vector<TailSource> sources;
+};
+using TailRequestPtr = std::shared_ptr<KeeperRecordingClient::TailRequest>;
+using Barrier = std::shared_ptr<rpc::FanoutIssueBarrier>;
+void pause(rpc::RpcDeadline const& deadline)
+{
+    auto duration =
+            std::min(deadline.remaining(),
+                     std::chrono::duration_cast<rpc::RpcDeadline::Clock::duration>(std::chrono::milliseconds(1)));
+    if(duration > rpc::RpcDeadline::Clock::duration::zero())
+        std::this_thread::sleep_for(duration);
+}
+// Asks one keeper for its newest sequences. The job ends once that call has, so
+// it holds a worker only for its own call.
+class TailSequences final: public rpc::OwnedRpcWork<int>
+{
+public:
+    TailSequences(std::shared_ptr<TailShared> shared,
+                  size_t index,
+                  TailRequestPtr request,
+                  Barrier issued,
+                  StoryId story,
+                  size_t n,
+                  uint64_t cap)
+        : shared_(std::move(shared))
+        , index_(index)
+        , request_(std::move(request))
+        , issued_(std::move(issued))
+        , story_(story)
+        , n_(n)
+        , cap_(cap)
+    {}
+    rpc::RpcResult<int> run(rpc::OperationContext& operation) override
     {
-        LOG_WARNING("[KeeperTailReader] gather_story_tail: no keepers assigned to story {}", story_id);
-        return CL_ERR_NO_KEEPERS;
-    }
-    if(n == 0)
-    {
-        return CL_SUCCESS;
+        auto& source = shared_->sources[index_];
+        auto sequences = request_->sequences(operation, story_, n_, cap_, *issued_);
+        source.status = sequences.status;
+        source.timedOut = request_->timedOut();
+        if(sequences.reply)
+            source.sequences = std::move(*sequences.reply);
+        source.ready.store(true, std::memory_order_release);
+        if(!sequences.reply && sequences.may_have_dispatched)
+            return {sequences.status, true, std::nullopt};
+        return {CL_SUCCESS, sequences.may_have_dispatched, sequences.status};
     }
 
-    // Phase 1 (scatter): fan out tail_get_sequences to every keeper concurrently,
-    // then collect. Issuing all RPCs before waiting on any means total phase-1
-    // latency is ~the slowest keeper (bounded by the per-RPC timeout) instead of
-    // the sum, and one slow or hung keeper can neither serialize nor block the
-    // others. Each response is bounded by kTailReadRpcTimeoutMs; a timeout or RPC
-    // error simply drops that keeper's contribution (empty tail).
-    // Per-phase outcome tallies. A tail read is best-effort across the group, so ONE
-    // keeper failing degrades the result but is still a successful read; every keeper
-    // failing is not a read at all, and must not be reported as an empty tail.
-    std::size_t timeouts = 0;
-    std::size_t errors = 0;
-    std::size_t responded = 0;
-
-    std::vector<std::pair<KeeperRecordingClient*, tl::async_response>> inflight;
-    inflight.reserve(keepers.size());
-    for(auto* keeper: keepers)
+private:
+    std::shared_ptr<TailShared> shared_;
+    size_t index_;
+    TailRequestPtr request_;
+    Barrier issued_;
+    StoryId story_;
+    size_t n_;
+    uint64_t cap_;
+};
+// Fetches the events of the sequences chosen from one keeper.
+class TailEvents final: public rpc::OwnedRpcWork<TailReply>
+{
+public:
+    TailEvents(std::shared_ptr<TailShared> shared,
+               size_t index,
+               TailRequestPtr request,
+               Barrier issued,
+               StoryId story,
+               uint64_t cap)
+        : shared_(std::move(shared))
+        , index_(index)
+        , request_(std::move(request))
+        , issued_(std::move(issued))
+        , story_(story)
+        , cap_(cap)
+    {}
+    rpc::RpcResult<TailReply> run(rpc::OperationContext& operation) override
     {
-        if(keeper == nullptr)
+        auto events = request_->events(operation, story_, shared_->sources[index_].selection, cap_, *issued_);
+        if(!events.reply)
         {
-            continue;
+            if(events.may_have_dispatched)
+                return {events.status, true, std::nullopt};
+            return {CL_SUCCESS, false, TailReply{events.status, {}}};
         }
-        try
-        {
-            inflight.emplace_back(keeper, keeper->getTailSequencesAsync(story_id, n));
-        }
-        catch(thallium::exception const& ex)
-        {
-            ++errors;
-            LOG_ERROR("[KeeperTailReader] tail_get_sequences issue to {} failed: {}",
-                      to_string(keeper->getRecordingServiceId()),
-                      ex.what());
-        }
+        return {CL_SUCCESS, true, TailReply{CL_SUCCESS, std::move(*events.reply)}};
     }
 
-    std::map<EventSequence, KeeperRecordingClient*> seqToKeeper;
-    for(auto& entry: inflight)
+private:
+    std::shared_ptr<TailShared> shared_;
+    size_t index_;
+    TailRequestPtr request_;
+    Barrier issued_;
+    StoryId story_;
+    uint64_t cap_;
+};
+// Runs one job per entry of `order` in waves of as many jobs as the runtime has
+// slots (fewer for the last wave). A wave starts only once it holds all its
+// slots, issues its calls together and is waited for before the next one, so a
+// story can have more keepers than the runtime has slots. Without `retry`, a
+// first wave that cannot get every slot at once returns at once, before any
+// dispatch, as a read with no more keepers than slots always has. With it, a
+// wave gives back what it holds and tries again until the deadline, for slots
+// that this read's own earlier jobs are giving back. Returns CL_SUCCESS once
+// every entry ran, or the reservation status that stopped it.
+template <class Reply, class Make, class Done>
+int runInWaves(std::vector<size_t> const& order,
+               rpc::RpcRuntime& runtime,
+               rpc::RpcDeadline const& deadline,
+               bool retry,
+               Make make,
+               Done done)
+{
+    size_t next = 0;
+    while(next < order.size())
     {
-        KeeperRecordingClient* keeper = entry.first;
-        try
+        size_t const want = std::min(runtime.capacity(), order.size() - next);
+        std::vector<rpc::RpcReservation> reservations;
+        while(reservations.size() < want)
         {
-            std::vector<EventSequence> seqs = entry.second.wait();
-            ++responded;
-            for(auto const& seq: seqs) { seqToKeeper[seq] = keeper; }
-        }
-        catch(thallium::timeout const&)
-        {
-            ++timeouts;
-            LOG_WARNING("[KeeperTailReader] tail_get_sequences to {} timed out; skipping this keeper",
-                        to_string(keeper->getRecordingServiceId()));
-        }
-        catch(thallium::exception const& ex)
-        {
-            ++errors;
-            LOG_ERROR("[KeeperTailReader] tail_get_sequences to {} failed: {}",
-                      to_string(keeper->getRecordingServiceId()),
-                      ex.what());
-        }
-    }
-
-    // No keeper answered at all: the tail is unknown, not empty. Returning CL_SUCCESS
-    // here would be indistinguishable from "this story has no events yet", and callers
-    // do read it that way -- the e2e test and perf_bench both treat an empty result as
-    // "not visible yet" and keep polling.
-    if(responded == 0 && (timeouts + errors) > 0)
-    {
-        LOG_ERROR("[KeeperTailReader] gather_story_tail: story {} - no keeper answered phase 1 ({} timed out, {} "
-                  "errored); the tail is unknown",
-                  story_id,
-                  timeouts,
-                  errors);
-        return (timeouts > 0) ? CL_ERR_QUERY_TIMED_OUT : CL_ERR_UNKNOWN;
-    }
-    if(timeouts + errors > 0)
-    {
-        LOG_WARNING("[KeeperTailReader] gather_story_tail: story {} - {} of {} keeper(s) did not answer phase 1; the "
-                    "tail may be missing their most recent events",
-                    story_id,
-                    timeouts + errors,
-                    responded + timeouts + errors);
-    }
-
-    if(seqToKeeper.empty())
-    {
-        LOG_DEBUG("[KeeperTailReader] gather_story_tail: story {} has no tail events yet", story_id);
-        return CL_SUCCESS;
-    }
-
-    // Select the global last-N sequences (the largest N keys), grouped per keeper.
-    std::map<KeeperRecordingClient*, std::vector<EventSequence>> perKeeper;
-    std::size_t take = (n < seqToKeeper.size()) ? n : seqToKeeper.size();
-    auto seq_iter = seqToKeeper.end();
-    for(std::size_t i = 0; i < take; ++i)
-    {
-        --seq_iter;
-        perKeeper[seq_iter->second].push_back(seq_iter->first);
-    }
-
-    // Phase 2 (gather): fetch payloads for the selected sequences from each keeper
-    // concurrently — same rationale as phase 1. Issue all tail_get_events first,
-    // then wait on each; per-keeper timeout/error drops that keeper's payloads.
-    // perKeeper stays in scope through the waits so the seqs each request
-    // references remain valid.
-    timeouts = 0;
-    errors = 0;
-    responded = 0;
-
-    std::vector<std::pair<KeeperRecordingClient*, tl::async_response>> inflight_events;
-    inflight_events.reserve(perKeeper.size());
-    for(auto& keeper_entry: perKeeper)
-    {
-        try
-        {
-            inflight_events.emplace_back(keeper_entry.first,
-                                         keeper_entry.first->getTailEventsAsync(story_id, keeper_entry.second));
-        }
-        catch(thallium::exception const& ex)
-        {
-            ++errors;
-            LOG_ERROR("[KeeperTailReader] tail_get_events issue to {} failed: {}",
-                      to_string(keeper_entry.first->getRecordingServiceId()),
-                      ex.what());
-        }
-    }
-
-    // Assemble Events keyed by sequence so the result comes out sorted ascending.
-    std::map<EventSequence, Event> assembled;
-    for(auto& entry: inflight_events)
-    {
-        KeeperRecordingClient* keeper = entry.first;
-        try
-        {
-            std::vector<LogEvent> logEvents = entry.second.wait();
-            ++responded;
-            for(auto const& le: logEvents)
+            auto token = runtime.reserve(deadline);
+            if(token)
             {
-                Event event(le.time(), le.getClientId(), le.index(), le.getRecord());
-                assembled[event.sequence()] = event;
+                reservations.push_back(std::move(token));
+                continue;
             }
+            reservations.clear();
+            if(!retry || token.status() != CL_ERR_RPC_CAPACITY || deadline.expired())
+                return token.status();
+            pause(deadline);
         }
-        catch(thallium::timeout const&)
-        {
-            ++timeouts;
-            LOG_WARNING("[KeeperTailReader] tail_get_events to {} timed out; skipping this keeper",
-                        to_string(keeper->getRecordingServiceId()));
-        }
-        catch(thallium::exception const& ex)
-        {
-            ++errors;
-            LOG_ERROR("[KeeperTailReader] tail_get_events to {} failed: {}",
-                      to_string(keeper->getRecordingServiceId()),
-                      ex.what());
-        }
+        auto issued = std::make_shared<rpc::FanoutIssueBarrier>(static_cast<unsigned>(want));
+        std::vector<rpc::RpcPending<Reply>> pending;
+        for(size_t i = 0; i < want; ++i)
+            pending.push_back(runtime.submit<Reply>(std::move(reservations[i]), make(order[next + i], issued)));
+        for(size_t i = 0; i < want; ++i) done(order[next + i], pending[i].wait());
+        next += want;
+        retry = true;
     }
-
-    // Phase 1 found sequences, so there ARE events to fetch. If no keeper delivered
-    // any payload, the read failed -- do not report that as an empty tail.
-    if(responded == 0 && (timeouts + errors) > 0)
-    {
-        LOG_ERROR("[KeeperTailReader] gather_story_tail: story {} - no keeper answered phase 2 ({} timed out, {} "
-                  "errored); {} selected event(s) could not be fetched",
-                  story_id,
-                  timeouts,
-                  errors,
-                  take);
-        return (timeouts > 0) ? CL_ERR_QUERY_TIMED_OUT : CL_ERR_UNKNOWN;
-    }
-    if(timeouts + errors > 0)
-    {
-        LOG_WARNING("[KeeperTailReader] gather_story_tail: story {} - {} of {} keeper(s) did not answer phase 2; "
-                    "returning {} of {} selected event(s)",
-                    story_id,
-                    timeouts + errors,
-                    responded + timeouts + errors,
-                    assembled.size(),
-                    take);
-    }
-
-    events.reserve(assembled.size());
-    for(auto const& entry: assembled) { events.push_back(entry.second); }
-
-    // Every keeper answered, yet fewer payloads came back than phase 1 named. Note
-    // that `take` is derived from phase 1's answer, not from n, so a story holding
-    // fewer than n events produces a complete (merely shorter) result and never
-    // reaches here. Getting here means events were released from a keeper tail
-    // between the two phases. Keeper-side pinning removes the common cause (age-out
-    // firing on a maintenance tick mid-read); what remains is capacity eviction,
-    // which pins deliberately do not defer because tail_capacity is a memory bound,
-    // and a phase 2 slower than the pin grace. Report it either way: a truncated
-    // tail must not be indistinguishable from a whole one, or callers poll forever
-    // on a result that can never complete.
-    if((timeouts + errors) == 0 && assembled.size() < take)
-    {
-        LOG_ERROR("[KeeperTailReader] gather_story_tail: story {} - phase 2 returned {} of the {} event(s) phase 1 "
-                  "promised; the rest left the keeper tail between the two phases",
-                  story_id,
-                  assembled.size(),
-                  take);
-        return CL_ERR_PARTIAL_RESULT;
-    }
-
-    LOG_DEBUG("[KeeperTailReader] gather_story_tail(n={}) for story {} returned {} events", n, story_id, events.size());
     return CL_SUCCESS;
 }
+} // namespace
+int gather_story_tail(std::vector<KeeperRecordingClient*> const& keepers,
+                      StoryId const& story,
+                      size_t n,
+                      std::vector<Event>& output,
+                      rpc::RpcDeadline const& deadline,
+                      rpc::RpcRuntime& runtime,
+                      std::shared_ptr<void> retention,
+                      uint64_t cap)
+{
+    output.clear();
+    if(keepers.empty())
+        return CL_ERR_NO_KEEPERS;
+    if(n == 0)
+        return CL_SUCCESS;
+    std::vector<TailRequestPtr> requests;
+    std::vector<size_t> all;
+    for(size_t i = 0; i < keepers.size(); ++i)
+    {
+        if(!keepers[i])
+            return CL_ERR_UNKNOWN;
+        requests.push_back(keepers[i]->prepareTail());
+        all.push_back(i);
+    }
+    auto shared = std::make_shared<TailShared>(std::move(retention), keepers.size());
+    size_t ran = 0;
+    int stopped = runInWaves<int>(
+            all,
+            runtime,
+            deadline,
+            false,
+            [&](size_t i, Barrier issued)
+            { return std::make_shared<TailSequences>(shared, i, requests[i], std::move(issued), story, n, cap); },
+            [&](size_t, rpc::RpcResult<int> const&) { ++ran; });
+    if(ran == 0)
+        return stopped;
+    bool incomplete = stopped != CL_SUCCESS, sourceTimedOut = false;
+    size_t answered = 0;
+    std::map<EventSequence, size_t> sequences;
+    for(size_t i = 0; i < keepers.size(); ++i)
+    {
+        auto& source = shared->sources[i];
+        bool ready = source.ready.load(std::memory_order_acquire);
+        if(ready)
+            sourceTimedOut |= source.timedOut;
+        if(!ready || source.status != CL_SUCCESS)
+        {
+            incomplete = true;
+            continue;
+        }
+        ++answered;
+        for(auto const& sequence: source.sequences) sequences[sequence] = i;
+    }
+    size_t take = std::min(n, sequences.size());
+    auto sequence = sequences.end();
+    for(size_t i = 0; i < take; ++i)
+    {
+        --sequence;
+        shared->sources[sequence->second].selection.push_back(sequence->first);
+    }
+    std::vector<size_t> selected;
+    for(size_t i = 0; i < keepers.size(); ++i)
+        if(!shared->sources[i].selection.empty())
+            selected.push_back(i);
+    std::map<EventSequence, Event> assembled;
+    if(runInWaves<TailReply>(
+               selected,
+               runtime,
+               deadline,
+               true,
+               [&](size_t i, Barrier issued)
+               { return std::make_shared<TailEvents>(shared, i, requests[i], std::move(issued), story, cap); },
+               [&](size_t, rpc::RpcResult<TailReply> result)
+               {
+                   if(!result.reply || result.reply->status != CL_SUCCESS)
+                   {
+                       incomplete = true;
+                       return;
+                   }
+                   for(auto const& event: result.reply->events)
+                   {
+                       Event value(event.time(), event.getClientId(), event.index(), event.getRecord());
+                       assembled[value.sequence()] = std::move(value);
+                   }
+               }) != CL_SUCCESS)
+        incomplete = true;
+    output.reserve(assembled.size());
+    for(auto& event: assembled) output.push_back(std::move(event.second));
+    if(!answered)
+        return deadline.expired() || sourceTimedOut ? CL_ERR_QUERY_TIMED_OUT : CL_ERR_UNKNOWN;
+    if(assembled.size() < take || incomplete)
+        return output.empty() && deadline.expired() ? CL_ERR_QUERY_TIMED_OUT : CL_ERR_PARTIAL_RESULT;
+    return CL_SUCCESS;
+}
+} // namespace chronolog

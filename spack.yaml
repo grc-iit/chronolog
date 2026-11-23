@@ -3,7 +3,7 @@ spack:
   - cmake@4.4.4
   - boost@1.90.0
   - spdlog@1.17.0
-  - mpich@5.0.2~fortran +verbs +argobots ^libfabric@2.6.0 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
+  - mpich@5.0.2~fortran +verbs ~argobots ^libfabric@2.6.0 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
   - mochi-thallium@0.17.0 ^libfabric@2.6.0 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
   - mochi-margo@0.24.4 ^libfabric@2.6.0 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
   - mercury@2.4.1~boostsys ^libfabric@2.6.0 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs

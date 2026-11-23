@@ -157,12 +157,12 @@ Sample output:
 [client_reader_stream] Config loaded from '/home/user/chronolog-install/chronolog/conf/default-chrono-client-conf.json'
 ===== ChronoLog Client Configuration =====
 [PORTAL_CONF]
-  protocol: ofi+sockets
+  protocol: ofi+tcp
   IP: 127.0.0.1
   port: 5555
   provider ID: 55
 [QUERY_CONF]
-  protocol: ofi+sockets
+  protocol: ofi+tcp
   IP: 127.0.0.1
   port: 5557
   provider ID: 57

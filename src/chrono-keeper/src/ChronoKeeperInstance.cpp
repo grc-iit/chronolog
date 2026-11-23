@@ -1,40 +1,31 @@
-#include <unistd.h>
-#include <arpa/inet.h>
 #include <signal.h>
 #include <sys/uio.h>
 #include <algorithm>
 #include <cerrno>
-#include <chrono>
-#include <cstdlib>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <memory>
-#include <sstream>
-#include <string>
-#include <utility>
-#include <cstdint>
-
 #include <KeeperRecordingService.h>
-#include <KeeperRegClient.h>
-#include <IngestionQueue.h>
-#include <StoryChunkExtractionQueue.h>
-#include <KeeperChunkRetentionStore.h>
-#include <KeeperDataStore.h>
 #include <KeeperDurableWriter.h>
 #include <KeeperWal.h>
 #include <WalFileSink.h>
 #include <WalMountCheck.h>
 #include <WalRecovery.h>
+#include <KeeperRegClient.h>
+#include <KeeperDataStore.h>
 #include <DataStoreAdminService.h>
-#include <cmd_arg_parse.h>
-#include <StoryChunkExtractionModule.h>
 #include <KeeperExtractionChain.h>
-#include <KeeperExtractionEngine.h>
+#include <StoryChunkExtractionModule.h>
 #include <ConfigurationManager.h>
 #include <ChronoKeeperConfiguration.h>
-
+#include <cmd_arg_parse.h>
+#include <private/ServiceLifecycle.h>
+#include <private/LifecyclePublisher.h>
+#include <private/ManagedStopBarrier.h>
 namespace chl = chronolog;
-namespace tl = thallium;
+namespace rpc = chronolog::rpc;
+using namespace std::chrono_literals;
 
 // The file a keeper with the WAL on leaves in its WAL directory when it exits:
 // "pending_events=<n> pending_bytes=<b>", the durable events the grapher had
@@ -241,515 +232,534 @@ static void stop_keeper_wal(chl::KeeperWal& wal)
     }
 }
 
-// we will be using a combination of the uint32_t representation of the service IP address
-// and uint16_t representation of the port number
-int service_endpoint_from_dotted_string(std::string const& ip_string, int port, std::pair<uint32_t, uint16_t>& endpoint)
+namespace
 {
-    // we will be using a combination of the uint32_t representation of the service IP address
-    // and uint16_t representation of the port number
-    // NOTE: both IP and port values in the KeeperCard are in the host byte order, not the network order)
-    // to identify the ChronoKeeper process
-
-    struct sockaddr_in sa;
-    // translate the recording service dotted IP string into 32bit network byte order representation
-    int inet_pton_return = inet_pton(AF_INET, ip_string.c_str(), &sa.sin_addr.s_addr); //returns 1 on success
-    if(1 != inet_pton_return)
-    {
-        LOG_ERROR("[ChronoKeeperInstance] Invalid IP address provided: {}", ip_string);
-        return (-1);
-    }
-
-    // translate 32bit ip from network into the host byte order
-    uint32_t ntoh_ip_addr = ntohl(sa.sin_addr.s_addr);
-    uint16_t ntoh_port = port;
-    endpoint = std::pair<uint32_t, uint16_t>(ntoh_ip_addr, ntoh_port);
-
-    LOG_DEBUG("[ChronoKeeperInstance] Service endpoint created: IP={}, Port={}", ip_string, port);
-    return 1;
-}
-
-volatile sig_atomic_t keep_running = true;
-
-void sigterm_handler(int)
+volatile sig_atomic_t stop_requests = 0;
+void request_stop(int)
 {
-    LOG_INFO("[ChronoKeeperInstance] Received SIGTERM signal. Initiating shutdown procedure.");
-    keep_running = false;
-    return;
+    if(stop_requests < SIG_ATOMIC_MAX)
+        ++stop_requests;
 }
-
-///////////////////////////////////////////////
-
+struct KeeperData
+{
+    chl::KeeperConfiguration conf;
+    chl::KeeperIdCard id;
+    chl::ServiceId admin;
+    // The WAL for durable writes, when WAL.enabled. Declared before the
+    // retention store, which keeps a pointer to it as its WalObserver.
+    std::unique_ptr<chl::KeeperWal> wal;
+    chl::StoryChunkExtractionModule<chl::ChronoKeeperExtractionChain> extraction;
+    chl::KeeperChunkRetentionStore retained;
+    chl::IngestionQueue ingestion;
+    chl::KeeperDataStore store;
+    std::unique_ptr<chl::KeeperDurableWriter> durableWriter;
+    std::unique_ptr<chl::KeeperRegistryClient> registry;
+    bool started = false, extractionReady = false, unregistered = false;
+    std::array<std::shared_ptr<rpc::LifecycleStep>, 3> initialized;
+    std::shared_ptr<rpc::LifecycleStep> walStart, start, stopCollection, durable, stopExtraction, walStop,
+            publisherPermit;
+    explicit KeeperData(chl::KeeperConfiguration const& c)
+        : conf(c)
+        , id(c.RECORDING_GROUP,
+             chl::ServiceId(c.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF,
+                            c.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.IP,
+                            c.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT,
+                            c.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID))
+        , admin(c.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF,
+                c.DATA_STORE_ADMIN_SERVICE_CONF.IP,
+                c.DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT,
+                c.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID)
+        , extraction(c.EXTRACTION_MODULE_CONF.extraction_stream_count)
+        , retained(extraction.getExtractionQueue(),
+                   c.DATA_STORE_CONF.tail_capacity,
+                   c.DATA_STORE_CONF.retention_cap_mb,
+                   c.DATA_STORE_CONF.live_tail_read,
+                   std::chrono::seconds(c.DATA_STORE_CONF.archive_visibility_delay_secs))
+        , store(ingestion,
+                extraction.getExtractionQueue(),
+                retained,
+                c.DATA_STORE_CONF.max_story_chunk_size,
+                c.DATA_STORE_CONF.story_chunk_duration_secs,
+                c.DATA_STORE_CONF.acceptance_window_secs,
+                c.DATA_STORE_CONF.inactive_story_delay_secs,
+                c.DATA_STORE_CONF.watermark_resend_timeout_secs)
+    {}
+};
+std::string address(chl::RPCProviderConf const& conf)
+{
+    return conf.PROTO_CONF + "://" + conf.IP + ":" + std::to_string(conf.BASE_PORT);
+}
+} // namespace
 int main(int argc, char** argv)
 {
-    int exit_code = 0;
-    signal(SIGTERM, sigterm_handler);
-
-    /// Configure SetUp ________________________________________________________________________________________________
-    std::string conf_file_path;
-    conf_file_path = parse_conf_path_arg(argc, argv);
-    if(conf_file_path.empty())
+    auto startupEntered = rpc::RpcDeadline::Clock::now();
+    signal(SIGTERM, request_stop);
+    std::string config = parse_conf_path_arg(argc, argv);
+    if(config.empty())
+        return 1;
+    chl::ConfigurationManager manager(config);
+    chl::KeeperConfiguration conf;
+    if(conf.parseJsonConf(manager.KEEPER_JSON_CONF) != chl::CL_SUCCESS)
+        return 1;
+    if(chl::chrono_monitor::initialize(conf.LOG_CONF.LOGTYPE,
+                                       conf.LOG_CONF.LOGFILE,
+                                       conf.LOG_CONF.LOGLEVEL,
+                                       conf.LOG_CONF.LOGNAME,
+                                       conf.LOG_CONF.LOGFILESIZE,
+                                       conf.LOG_CONF.LOGFILENUM,
+                                       conf.LOG_CONF.FLUSHLEVEL) != 0)
+        return 1;
+    auto publisher = rpc::LifecyclePublisher::Create(config);
+    rpc::LifecycleRecord lifecycle;
+    auto startup = rpc::RpcDeadline::fromStart(startupEntered, std::chrono::milliseconds(conf.RPC_POLICY.startup_ms));
+    auto data = std::make_shared<KeeperData>(conf);
+    auto generation = std::make_shared<rpc::NativeProcessGeneration>(3);
+    std::vector<std::shared_ptr<rpc::RpcRuntime>> runtimes;
+    std::vector<std::shared_ptr<rpc::RpcBulkOwner>> owners;
+    for(int i = 0; i < 3; ++i)
     {
-        std::exit(EXIT_FAILURE);
+        auto runtime = std::make_shared<rpc::RpcRuntime>();
+        auto owner = rpc::RpcBulkOwner::Prepare(runtime,
+                                                conf.RPC_POLICY,
+                                                i == 0,
+                                                std::make_unique<rpc::NativeMidRuntime>(generation));
+        owner->dependencies = data;
+        runtimes.push_back(std::move(runtime));
+        owners.push_back(std::move(owner));
     }
-    chronolog::ConfigurationManager confManager(conf_file_path);
-
-    chronolog::KeeperConfiguration KEEPER_CONF;
-    if(KEEPER_CONF.parseJsonConf(confManager.KEEPER_JSON_CONF) != chronolog::CL_SUCCESS)
     {
-        std::cerr << "[ChronoKeeper] Invalid KEEPER configuration. Exiting";
-        exit(EXIT_FAILURE);
-    }
-
-    int result = chronolog::chrono_monitor::initialize(KEEPER_CONF.LOG_CONF.LOGTYPE,
-                                                       KEEPER_CONF.LOG_CONF.LOGFILE,
-                                                       KEEPER_CONF.LOG_CONF.LOGLEVEL,
-                                                       KEEPER_CONF.LOG_CONF.LOGNAME,
-                                                       KEEPER_CONF.LOG_CONF.LOGFILESIZE,
-                                                       KEEPER_CONF.LOG_CONF.LOGFILENUM,
-                                                       KEEPER_CONF.LOG_CONF.FLUSHLEVEL);
-    if(result == 1)
-    {
-        exit(EXIT_FAILURE);
-    }
-
-    LOG_INFO("[ChronoKeeper] Running ChronoKeeper Server.");
-
-    LOG_INFO("[ChronoKeeper] Configuration {}", KEEPER_CONF.to_String());
-
-    // Instantiate ChronoKeeper MemoryDataStore
-    // instantiate DataStoreAdminService
-
-    /// DataStoreAdminService setup ____________________________________________________________________________________
-    std::string datastore_service_ip = KEEPER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.IP;
-    int datastore_service_port = KEEPER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT;
-    std::string KEEPER_DATASTORE_SERVICE_NA_STRING = KEEPER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF + "://" +
-                                                     datastore_service_ip + ":" +
-                                                     std::to_string(datastore_service_port);
-
-    uint16_t datastore_service_provider_id = KEEPER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
-
-    chronolog::service_endpoint datastore_endpoint;
-    // validate ip address, instantiate DataAdminService and create ServiceId to be included in KeeperRegistrationMsg
-
-    if(-1 == service_endpoint_from_dotted_string(datastore_service_ip, datastore_service_port, datastore_endpoint))
-    {
-        LOG_CRITICAL("[ChronoKeeperInstance] Failed to start DataStoreAdminService. Invalid endpoint provided.");
-        return (-1);
-    }
-
-    chronolog::ServiceId dataStoreServiceId(KEEPER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF,
-                                            datastore_endpoint,
-                                            KEEPER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
-
-
-    /// KeeperRecordingService setup ___________________________________________________________________________________
-    // Instantiate KeeperRecordingService
-    std::string KEEPER_RECORDING_SERVICE_PROTOCOL = KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF;
-    std::string KEEPER_RECORDING_SERVICE_IP = KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.IP;
-    uint16_t KEEPER_RECORDING_SERVICE_PORT = KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT;
-    uint16_t recording_service_provider_id = KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
-
-
-    // validate ip address, instantiate Recording Service and create KeeperIdCard
-
-    chronolog::service_endpoint recording_endpoint;
-    if(-1 == service_endpoint_from_dotted_string(KEEPER_RECORDING_SERVICE_IP,
-                                                 KEEPER_RECORDING_SERVICE_PORT,
-                                                 recording_endpoint))
-    {
-        LOG_CRITICAL("[ChronoKeeperInstance] Failed to start KeeperRecordingService. Invalid endpoint provided.");
-        return (-1);
-    }
-    LOG_INFO("[ChronoKeeperInstance] KeeperRecordingService started successfully.");
-
-    // create KeeperIdCard to identify this Keeper process in ChronoVisor's KeeperRegistry
-    chronolog::RecordingGroupId keeper_group_id = KEEPER_CONF.RECORDING_GROUP;
-    chronolog::KeeperIdCard keeperIdCard(
-            keeper_group_id,
-            chronolog::ServiceId(KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF,
-                                 KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.IP,
-                                 KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.BASE_PORT,
-                                 KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID));
-
-    std::string KEEPER_RECORDING_SERVICE_NA_STRING;
-    keeperIdCard.getRecordingServiceId().get_service_as_string(KEEPER_RECORDING_SERVICE_NA_STRING);
-
-    LOG_INFO("[ChronoKeeperInstance] KeeperIdCard: {}", chronolog::to_string(keeperIdCard));
-
-
-    // Instantiate ChronoKeeper  ExtractionModule
-
-    tl::engine* extractionEngine = nullptr;
-    // default extraction engine fabric is "ofi+sockets"
-    std::string extraction_engine_protocol = KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_protocol;
-
-
-    // if single_endpoint_rdma_extractor or dual_endpoint_rdma_extractor
-    // are configured then extraction engine needs to be instantiated with
-    // the protocol of the grapher receiving endpoint
-
-    try
-    {
-        extractionEngine = chl::createExtractionEngine(extraction_engine_protocol);
-
-        std::stringstream s1;
-        s1 << extractionEngine->self();
-        LOG_INFO("[ChronoKeeperInstance] GroupID={} starting extraction engine at address {}",
-                 keeper_group_id,
-                 s1.str());
-    }
-    catch(tl::exception const&)
-    {
-        LOG_ERROR("[ChronoKeeperInstance] Keeper failed to create extraction engine");
-        return (-1);
-    }
-
-    std::string log_string;
-
-    LOG_INFO("[ChronoKeeperInstance] Initializing StoryChunkExtractionModule with {}",
-             KEEPER_CONF.EXTRACTION_MODULE_CONF.to_string(log_string));
-
-    chl::StoryChunkExtractionModule<chl::ChronoKeeperExtractionChain> theExtractionModule(
-            KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
-
-    theExtractionModule.getExtractionChain().activate(keeperIdCard.getRecordingServiceId(),
-                                                      extractionEngine,
-                                                      KEEPER_CONF.EXTRACTION_MODULE_CONF);
-
-    // Every grapher-bound chunk carries this keeper's DataStoreAdminService
-    // identity so the grapher knows where to push watermark reports.
-    theExtractionModule.getExtractionChain().set_watermark_reporter(dataStoreServiceId);
-
-    theExtractionModule.initialize(KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
-
-    if(!theExtractionModule.is_initialized())
-    {
-        LOG_ERROR("[ChronoKeeperInstance] StoryChunkExtractionModule failed to initialize, exiting");
-        return (-1);
-    }
-
-    // Instantiate the chunk retention store (owns every sealed chunk) and DataStore.
-    // tail_capacity = max number of most-recent sealed events indexed per story
-    // for last-N playback (DataStoreInternals.tail_capacity, default 65536).
-    // retention_cap_mb = soft cap on retained-chunk memory; on exceed the store
-    // WARNs (watermark lagging) but never drops unpersisted data
-    // (DataStoreInternals.retention_cap_mb, default 4096, 0 disables the warning).
-    // live_tail_read (default false): when true, tail reads also serve events from
-    // the active/unsealed timeline, cutting write-to-visible latency below the
-    // seal window at the cost of provisional (eventually-consistent) reads.
-    const std::size_t keeper_tail_capacity = static_cast<std::size_t>(KEEPER_CONF.DATA_STORE_CONF.tail_capacity);
-    const std::size_t keeper_retention_cap_mb = static_cast<std::size_t>(KEEPER_CONF.DATA_STORE_CONF.retention_cap_mb);
-    // archive_visibility_delay_secs (default 10): how long after the grapher
-    // reports a chunk written the store keeps it and serves it as unconfirmed,
-    // so a player that has not listed the new archive file yet still replays it.
-    const int archive_visibility_delay_secs = KEEPER_CONF.DATA_STORE_CONF.archive_visibility_delay_secs;
-    // The keeper's WAL for durable writes, when WAL.enabled. Declared before
-    // the retention store, which keeps a pointer to it as its WalObserver, so
-    // it outlives the store on every return from main.
-    std::unique_ptr<chl::KeeperWal> theWal;
-    chronolog::KeeperChunkRetentionStore theTailStore(theExtractionModule.getExtractionQueue(),
-                                                      keeper_tail_capacity,
-                                                      keeper_retention_cap_mb,
-                                                      KEEPER_CONF.DATA_STORE_CONF.live_tail_read,
-                                                      std::chrono::seconds(archive_visibility_delay_secs));
-
-    // The extraction chain reports every drain outcome (grapher ack / transfer
-    // failure) back to the store; chunks are never freed by the drain loop.
-    theExtractionModule.getExtractionChain().attachRetentionStore(&theTailStore);
-
-    // Instantiate KeeperDataStore
-    chronolog::IngestionQueue ingestionQueue;
-    chronolog::KeeperDataStore theDataStore(ingestionQueue,
-                                            theExtractionModule.getExtractionQueue(),
-                                            theTailStore,
-                                            KEEPER_CONF.DATA_STORE_CONF.max_story_chunk_size,
-                                            KEEPER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
-                                            KEEPER_CONF.DATA_STORE_CONF.acceptance_window_secs,
-                                            KEEPER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
-                                            KEEPER_CONF.DATA_STORE_CONF.watermark_resend_timeout_secs);
-
-    // Recover the WAL before any service takes a request or the keeper
-    // registers: the recovered events become sealed chunks the extraction
-    // module ships once it starts, and their WAL records stay pending until
-    // the grapher confirms them.
-    if(KEEPER_CONF.WAL_CONF.enabled)
-    {
-        theWal = start_keeper_wal(KEEPER_CONF.WAL_CONF, KEEPER_RECORDING_SERVICE_NA_STRING, theTailStore, theDataStore);
-        if(theWal == nullptr)
+        // retireServices drains the recording runtime last, so this callback
+        // runs after all three MIDs are finalized and every status step on the
+        // admin runtime has settled.
+        std::weak_ptr<KeeperData> weak = data;
+        owners[2]->afterCleanup = [publisher, generation, weak]
         {
-            return (-1);
-        }
+            std::size_t handles = 0;
+            if(auto alive = weak.lock())
+                handles = alive->store.nativeHandleCount() + alive->extraction.nativeHandleCount();
+            publisher->publishTerminal(rpc::LifecyclePublisher::record(rpc::ShutdownState::Stopped,
+                                                                       chl::CL_SUCCESS,
+                                                                       0,
+                                                                       {},
+                                                                       generation->snapshot(),
+                                                                       handles));
+        };
     }
-    // Every return from here stops the WAL and leaves its exit summary.
-    auto stop_wal = [&theWal]()
-    {
-        if(theWal != nullptr)
-        {
-            stop_keeper_wal(*theWal);
-        }
-    };
-
-    // Instantiate KeeperRecordingService
-    tl::engine* dataAdminEngine = nullptr;
-
-    chronolog::DataStoreAdminService* keeperDataAdminService = nullptr;
-
-    try
-    {
-        margo_instance_id collection_margo_id =
-                margo_init(KEEPER_DATASTORE_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
-
-        dataAdminEngine = new tl::engine(collection_margo_id);
-
-        std::stringstream s3;
-        s3 << dataAdminEngine->self();
-        LOG_DEBUG("[ChronoKeeperInstance] GroupID={} starting DataStoreAdminService at address {} with ProviderID={}",
-                  keeper_group_id,
-                  s3.str(),
-                  datastore_service_provider_id);
-        keeperDataAdminService =
-                chronolog::DataStoreAdminService::CreateDataStoreAdminService(*dataAdminEngine,
-                                                                              datastore_service_provider_id,
-                                                                              theDataStore);
-    }
-    catch(tl::exception const&)
-    {
-        LOG_ERROR("[ChronoKeeperInstance] Keeper failed to create DataStoreAdminService");
-    }
-
-    LOG_INFO("[ChronoKeeperInstance] DataStoreAdminService started successfully.");
-
-    if(nullptr == keeperDataAdminService)
-    {
-        LOG_CRITICAL("[ChronoKeeperInstance] Keeper failed to create DataStoreAdminService exiting");
-        if(dataAdminEngine)
-        {
-            delete dataAdminEngine;
-        }
-        stop_wal();
-        return (-1);
-    }
-
-    // The keeper side of record_event_durable. With no WAL it answers every
-    // durable write CL_ERR_DURABILITY_UNAVAILABLE and ingests nothing.
-    chronolog::KeeperDurableWriter theDurableWriter(theWal.get(),
-                                                    ingestionQueue,
-                                                    theTailStore,
-                                                    theDataStore,
-                                                    KEEPER_CONF.WAL_CONF.durableCapBytes());
-
-    // Instantiate KeeperRecordingService
-    tl::engine* recordingEngine = nullptr;
-    chronolog::KeeperRecordingService* keeperRecordingService = nullptr;
-
-    try
-    {
-        int rpc_thread_count = static_cast<int>(KEEPER_CONF.KEEPER_RECORDING_SERVICE_CONF.INGESTION_THREAD_COUNT);
-        margo_instance_id margo_id =
-                margo_init(KEEPER_RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, rpc_thread_count);
-        recordingEngine = new tl::engine(margo_id);
-
-        std::stringstream s1;
-        s1 << recordingEngine->self();
-        LOG_INFO("[ChronoKeeperInstance] GroupID={} starting KeeperRecordingService at {} with provider_id {}",
-                 keeper_group_id,
-                 s1.str(),
-                 recording_service_provider_id);
-        keeperRecordingService = chronolog::KeeperRecordingService::CreateKeeperRecordingService(
-                *recordingEngine,
-                recording_service_provider_id,
-                ingestionQueue,
-                theTailStore,
-                [&theDurableWriter](chl::ChronicleName const& chronicle,
-                                    chl::StoryName const& story,
-                                    chl::LogEvent const& event)
-                { return theDurableWriter.write(chronicle, story, event); });
-    }
-    catch(tl::exception const&)
-    {
-        LOG_ERROR("[ChronoKeeperInstance] Keeper failed to create KeeperRecordingService");
-    }
-
-    if(nullptr == keeperRecordingService)
-    {
-        LOG_CRITICAL("[ChronoKeeperInstance] Keeper failed to create KeeperRecordingService exiting");
-        delete keeperDataAdminService;
-        stop_wal();
-        return (-1);
-    }
-
-    /// KeeperRegistryClient Set Up _____________________________________________________________________________________
-    // create KeeperRegistryClient and register the new KeeperRecording service with the KeeperRegistry
-    std::string KEEPER_REGISTRY_SERVICE_NA_STRING = KEEPER_CONF.VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +
-                                                    KEEPER_CONF.VISOR_REGISTRY_SERVICE_CONF.IP + ":" +
-                                                    std::to_string(KEEPER_CONF.VISOR_REGISTRY_SERVICE_CONF.BASE_PORT);
-
-    uint16_t KEEPER_REGISTRY_SERVICE_PROVIDER_ID = KEEPER_CONF.VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID;
-
-    chronolog::KeeperRegistryClient* keeperRegistryClient =
-            chronolog::KeeperRegistryClient::CreateKeeperRegistryClient(*dataAdminEngine,
-                                                                        KEEPER_REGISTRY_SERVICE_NA_STRING,
-                                                                        KEEPER_REGISTRY_SERVICE_PROVIDER_ID);
-
-    if(nullptr == keeperRegistryClient)
-    {
-        LOG_CRITICAL("[ChronoKeeperInstance] Keeper failed to create KeeperRegistryClient; exiting");
-        delete keeperRecordingService;
-        delete keeperDataAdminService;
-        stop_wal();
-        return (-1);
-    }
-
-    /// Registration with ChronoVisor __________________________________________________________________________________
-    // try to register with chronoVisor a few times than log ERROR and exit...
-    int registration_status = chronolog::CL_ERR_UNKNOWN;
-    constexpr int max_registration_attempts = 5;
-    int retries = max_registration_attempts;
-    int attempt = 0;
-    while((chronolog::CL_SUCCESS != registration_status) && (retries > 0))
-    {
-        registration_status = keeperRegistryClient->send_register_msg(
-                chronolog::KeeperRegistrationMsg(keeperIdCard, dataStoreServiceId));
-        retries--;
-        attempt++;
-        if(chronolog::CL_SUCCESS != registration_status)
-        {
-            LOG_WARNING("[ChronoKeeperInstance] Registration attempt {} of {} failed with status {}",
-                        attempt,
-                        max_registration_attempts,
-                        registration_status);
-            if(retries > 0)
+    int startupStatus = rpc::initializeService(
+            owners[0],
+            *runtimes[0],
+            {conf.EXTRACTION_MODULE_CONF.extraction_protocol, MARGO_CLIENT_MODE, 1},
+            startup,
+            data->initialized[0],
+            data,
+            [data, owner = owners[0]]
             {
-                sleep(5);
-            }
-        }
-    }
-
-    if(chronolog::CL_SUCCESS != registration_status)
+                auto& chain = data->extraction.getExtractionChain();
+                chain.activate(data->id.getRecordingServiceId(),
+                               owner->engine.get(),
+                               data->conf.EXTRACTION_MODULE_CONF);
+                chain.set_watermark_reporter(data->admin);
+                chain.attachRetentionStore(&data->retained);
+                int result = data->extraction.initialize(data->conf.EXTRACTION_MODULE_CONF.extraction_stream_count);
+                data->extractionReady = result == chl::CL_SUCCESS;
+                return result;
+            },
+            &stop_requests);
+    if(startupStatus == chl::CL_SUCCESS && conf.WAL_CONF.enabled)
     {
-        LOG_CRITICAL("[ChronoKeeperInstance] Failed to register with ChronoVisor after multiple attempts. Exiting.");
-        delete keeperRegistryClient;
-        delete keeperRecordingService;
-        delete keeperDataAdminService;
-        stop_wal();
-        return (-1);
+        // Recover the WAL before data collection starts, any service takes a
+        // request or the keeper registers: the recovered events become sealed
+        // chunks that extraction ships once it starts, and their WAL records
+        // stay pending until the grapher confirms them. It needs Argobots, so
+        // it runs after the first native instance is up. Recovery reads at
+        // most WAL.max_bytes and counts against startup_ms.
+        startupStatus = rpc::startLifecycleStep(
+                *runtimes[0],
+                startup,
+                data->walStart,
+                data,
+                [data]
+                {
+                    std::string endpoint;
+                    data->id.getRecordingServiceId().get_service_as_string(endpoint);
+                    data->wal = start_keeper_wal(data->conf.WAL_CONF, endpoint, data->retained, data->store);
+                    return data->wal ? int(chl::CL_SUCCESS) : int(chl::CL_ERR_UNKNOWN);
+                });
+        if(startupStatus == chl::CL_SUCCESS)
+            startupStatus = rpc::waitLifecycleStep(data->walStart, startup, &stop_requests);
     }
-    LOG_INFO("[ChronoKeeperInstance] Successfully registered with ChronoVisor.");
-
-    /// Start data collection and extraction threads ___________________________________________________________________
-    // services are successfully created and keeper process had registered with ChronoVisor
-    // start all dataCollection and Extraction threads...
-    tl::abt scope;
-    theDataStore.startDataCollection(3);
-    // start extraction streams & threads
-    theExtractionModule.startExtraction();
-
-
-    /// Main loop for sending stats message until receiving SIGTERM ____________________________________________________
-    // now we are ready to ingest records coming from the storyteller clients ....
-    // main thread would be sending stats message until keeper process receives
-    // sigterm signal
-    chronolog::KeeperStatsMsg keeperStatsMsg(keeperIdCard);
-    while(keep_running)
+    if(startupStatus == chl::CL_SUCCESS)
     {
-        keeperRegistryClient->send_stats_msg(keeperStatsMsg);
-        if(theWal != nullptr)
+        startupStatus = rpc::startLifecycleStep(*runtimes[0],
+                                                startup,
+                                                data->start,
+                                                data,
+                                                [data]
+                                                {
+                                                    data->started =
+                                                            true; // Includes partial native startup if creation throws.
+                                                    data->store.startDataCollection(3);
+                                                    data->extraction.startExtraction();
+                                                    return chl::CL_SUCCESS;
+                                                });
+        if(startupStatus == chl::CL_SUCCESS)
+            startupStatus = rpc::waitLifecycleStep(data->start, startup, &stop_requests);
+    }
+    if(startupStatus == chl::CL_SUCCESS)
+        startupStatus = rpc::initializeService(
+                owners[1],
+                *runtimes[1],
+                {address(conf.DATA_STORE_ADMIN_SERVICE_CONF), MARGO_SERVER_MODE, 1},
+                startup,
+                data->initialized[1],
+                data,
+                [data, owner = owners[1]]
+                {
+                    return chl::DataStoreAdminService::CreateDataStoreAdminService(
+                                   owner,
+                                   data->conf.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID,
+                                   data->store)
+                                   ? chl::CL_SUCCESS
+                                   : chl::CL_ERR_UNKNOWN;
+                },
+                &stop_requests);
+    if(startupStatus == chl::CL_SUCCESS)
+        startupStatus = rpc::initializeService(
+                owners[2],
+                *runtimes[2],
+                {address(conf.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF),
+                 MARGO_SERVER_MODE,
+                 conf.KEEPER_RECORDING_SERVICE_CONF.INGESTION_THREAD_COUNT},
+                startup,
+                data->initialized[2],
+                data,
+                [data, owner = owners[2]]
+                {
+                    // The keeper side of record_event_durable. With no WAL it
+                    // answers every durable write CL_ERR_DURABILITY_UNAVAILABLE
+                    // and ingests nothing.
+                    data->durableWriter =
+                            std::make_unique<chl::KeeperDurableWriter>(data->wal.get(),
+                                                                       data->ingestion,
+                                                                       data->retained,
+                                                                       data->store,
+                                                                       data->conf.WAL_CONF.durableCapBytes());
+                    return chl::KeeperRecordingService::CreateKeeperRecordingService(
+                                   owner,
+                                   data->conf.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID,
+                                   data->ingestion,
+                                   data->retained,
+                                   [writer = data->durableWriter.get()](chl::ChronicleName const& chronicle,
+                                                                        chl::StoryName const& story,
+                                                                        chl::LogEvent const& event)
+                                   { return writer->write(chronicle, story, event); })
+                                   ? chl::CL_SUCCESS
+                                   : chl::CL_ERR_UNKNOWN;
+                },
+                &stop_requests);
+    if(startupStatus == chl::CL_SUCCESS)
+    {
+        data->registry.reset(chl::KeeperRegistryClient::CreateKeeperRegistryClient(
+                owners[1],
+                address(conf.VISOR_REGISTRY_SERVICE_CONF),
+                conf.VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID,
+                startup));
+        startupStatus = data->registry ? chl::CL_ERR_UNKNOWN : chl::CL_ERR_SHUTDOWN_INCOMPLETE;
+        while(data->registry && !startup.expired() && !stop_requests)
         {
-            chl::WalStats const wal_stats = theWal->stats();
-            LOG_INFO("[KeeperWal] stats groups={} events={} bytes={} max_events_per_group={} pending_events={} "
-                     "pending_bytes={} segments={}",
-                     wal_stats.groups,
-                     wal_stats.events,
-                     wal_stats.bytes,
-                     wal_stats.max_events_per_group,
-                     wal_stats.pending_events,
-                     wal_stats.pending_bytes,
-                     wal_stats.segments);
+            startupStatus = data->registry->send_register_msg(chl::KeeperRegistrationMsg(data->id, data->admin),
+                                                              startup,
+                                                              &stop_requests);
+            if(startupStatus == chl::CL_SUCCESS)
+                break;
+            std::this_thread::sleep_for(1ms);
         }
-        sleep(10);
+        if(startupStatus != chl::CL_SUCCESS)
+            LOG_ERROR("[ChronoKeeper] Registration with ChronoVisor did not succeed: status {}", startupStatus);
     }
-
-    /// Unregister from ChronoVisor ____________________________________________________________________________________
-    // Unregister from the chronoVisor so that no new story requests would be coming
-    keeperRegistryClient->send_unregister_msg(keeperIdCard);
-    delete keeperRegistryClient;
-
-    /// Stop services and shut down ____________________________________________________________________________________
-    LOG_INFO("[ChronoKeeperInstance] Initiating shutdown procedures.");
-    // Stop recording events. The service object stays: a durable handler may
-    // still be waiting for its group's fdatasync and returns into it. It is
-    // deleted once the WAL has answered every waiter, after stop_wal below.
-    // The call returns once every accepted write already past its check has
-    // reached the ingestion queue, so data collection below collects it.
-    auto const ingest_wait = std::chrono::seconds(5);
-    if(!keeperRecordingService->stopAcceptingWrites(ingest_wait))
+    int exitCode = startupStatus == chl::CL_SUCCESS ? 0 : 1;
+    if(startupStatus == chl::CL_SUCCESS && !stop_requests)
     {
-        LOG_WARNING("[ChronoKeeperInstance] An accepted write was still being taken in {} s after the keeper stopped "
-                    "accepting writes; its event may not be collected",
-                    ingest_wait.count());
+        publisher->request(rpc::LifecyclePublisher::record(rpc::ShutdownState::Running,
+                                                           chl::CL_SUCCESS,
+                                                           0,
+                                                           startupEntered,
+                                                           generation->snapshot(),
+                                                           data->store.nativeHandleCount() +
+                                                                   data->extraction.nativeHandleCount()));
+        auto nextStats = rpc::RpcDeadline::Clock::now();
+        while(!stop_requests)
+        {
+            publisher->pump(*runtimes[1], startup, data);
+            if(rpc::RpcDeadline::Clock::now() >= nextStats)
+            {
+                data->registry->send_stats_msg(chl::KeeperStatsMsg(data->id));
+                if(data->wal)
+                {
+                    chl::WalStats const stats = data->wal->stats();
+                    LOG_INFO("[KeeperWal] stats groups={} events={} bytes={} max_events_per_group={} "
+                             "pending_events={} pending_bytes={} segments={}",
+                             stats.groups,
+                             stats.events,
+                             stats.bytes,
+                             stats.max_events_per_group,
+                             stats.pending_events,
+                             stats.pending_bytes,
+                             stats.segments);
+                }
+                nextStats = rpc::RpcDeadline::Clock::now() + 10s;
+            }
+            std::this_thread::sleep_for(100ms);
+        }
     }
-    // Shutdown the Data Collection
-    theDataStore.shutdownDataCollection();
-    // Data collection has finished, so nothing new will seal. Before extraction
-    // stops, wait for the grapher to confirm every chunk this keeper holds
-    // written: an acked chunk may still exist only in the grapher's memory, and a
-    // send can fail after its chunk was handed over. The wait sends unacked
-    // chunks again, so the extraction module must still be draining, and it
-    // learns of confirmations through watermark reports, so the data admin
-    // service stays up until it ends. ~KeeperChunkRetentionStore logs and frees
-    // whatever is still unconfirmed.
-    // TODO(shutdown recovery): with the template values (shutdown 150 s, resend
-    // 300 s) a chunk acked shortly before SIGTERM stays younger than the stall
-    // age for the whole wait, so requeueStalled never fires here. Settling
-    // deliveries already in flight works -- that is the common case -- but a
-    // delivery whose grapher-side write failed cannot be rescued: its receipt
-    // never settles, the wait times out, and the destructor frees the last copy
-    // with a warning. Recovering it needs the wait to outlast a stall age plus a
-    // write window (resend_age + write_window <= shutdown_confirm, so >= 390 s
-    // with today's numbers), or a shorter stall age used only during shutdown --
-    // which the keeper cannot derive, since the grapher's window is not in its
-    // configuration. Documented rather than changed; see the shutdown-wait
-    // recovery follow-up.
-    const int shutdown_confirm_timeout_secs = KEEPER_CONF.DATA_STORE_CONF.shutdown_confirm_timeout_secs;
-    if(!theTailStore.waitUntilDurable(std::chrono::seconds(shutdown_confirm_timeout_secs),
-                                      std::chrono::seconds(1),
-                                      std::chrono::seconds(KEEPER_CONF.DATA_STORE_CONF.watermark_resend_timeout_secs)))
+    auto stop = [&](rpc::RpcDeadline const& deadline)
     {
-        LOG_WARNING("[ChronoKeeperInstance] The grapher did not confirm every chunk written within "
-                    "shutdown_confirm_timeout_secs={}",
-                    shutdown_confirm_timeout_secs);
-    }
-    delete keeperDataAdminService;
-    // No request and no confirmation reaches the WAL any more: commit and
-    // answer what is queued, and leave the exit summary with the events the
-    // grapher did not confirm. A keeper started on the directory replays them.
-    stop_wal();
-    // Every durable handler has its answer now; let them, and any write that
-    // arrived just before stopAcceptingWrites, return before the service and
-    // its RPCs go.
-    // A handler still answering when the service is deleted crashes the
-    // keeper in Mercury (the delete deregisters its RPC). Waiting longer is no
-    // cure: refused writes keep starting handlers while clients write.
-    if(!keeperRecordingService->waitForWriteHandlers(std::chrono::milliseconds(200), std::chrono::seconds(10)))
+        owners[1]->quiesce();
+        owners[2]->quiesce(); // Also closes providers whose construction is still running.
+        // A timed-out constructor is still the same admitted action. Do not
+        // touch borrowed fields or admit replacement construction until it settles.
+        for(auto const& initialized: data->initialized)
+            if(initialized)
+            {
+                rpc::waitLifecycleStep(initialized, deadline);
+                if(!initialized->done.load(std::memory_order_acquire) || initialized->unsafe)
+                    return false;
+            }
+        for(auto const& step: {data->walStart, data->start})
+            if(step)
+            {
+                rpc::waitLifecycleStep(step, deadline);
+                if(!step->done.load(std::memory_order_acquire) || step->unsafe)
+                    return false;
+            }
+        while(!owners[1]->publicIdle() || !owners[2]->publicIdle())
+        {
+            if(deadline.expired())
+                return false;
+            std::this_thread::sleep_for(1ms);
+        }
+        auto phase = [&](std::shared_ptr<rpc::LifecycleStep>& record, std::function<int()> action)
+        {
+            while(!deadline.expired())
+            {
+                int admitted = rpc::startLifecycleStep(*runtimes[1], deadline, record, data, action);
+                if(admitted == chl::CL_SUCCESS)
+                    return rpc::waitLifecycleStep(record, deadline) == chl::CL_SUCCESS;
+                if(admitted != chl::CL_ERR_RPC_CAPACITY)
+                    return false;
+                std::this_thread::sleep_for(1ms);
+            }
+            return false;
+        };
+        if(data->started && !phase(data->stopCollection,
+                                   [data]
+                                   {
+                                       data->store.shutdownDataCollection();
+                                       return chl::CL_SUCCESS;
+                                   }))
+            return false;
+        if(!phase(data->durable,
+                  [data]
+                  {
+                      // The wait runs on its worker across stop attempts, so a
+                      // slow grapher gets the whole shutdown_confirm_timeout_secs,
+                      // counted from the first attempt, however short shutdown_ms
+                      // is. A grapher that has not confirmed by then is taken as
+                      // gone: the stop goes on, the WAL exit summary lists the
+                      // events it did not confirm, and with the WAL off they are
+                      // lost.
+                      int const confirmSecs = data->conf.DATA_STORE_CONF.shutdown_confirm_timeout_secs;
+                      if(!data->retained.waitUntilDurable(
+                                 std::chrono::seconds(confirmSecs),
+                                 10ms,
+                                 std::chrono::seconds(data->conf.DATA_STORE_CONF.watermark_resend_timeout_secs)))
+                          LOG_WARNING("[ChronoKeeperInstance] The grapher did not confirm every chunk written within "
+                                      "shutdown_confirm_timeout_secs={}",
+                                      confirmSecs);
+                      return chl::CL_SUCCESS;
+                  }))
+            return false;
+        if(data->extractionReady && !phase(data->stopExtraction,
+                                           [data]
+                                           {
+                                               data->extraction.shutdownExtraction();
+                                               return chl::CL_SUCCESS;
+                                           }))
+            return false;
+        // Nothing reaches the WAL any more: every durable handler has answered
+        // (public entries are idle), every chunk is archive-confirmed and
+        // extraction is joined. Commit and answer what is queued, leave the
+        // exit summary with the events the grapher did not confirm, which a
+        // keeper started on the directory replays, and free the WAL while
+        // Argobots is still up.
+        if(data->walStart && !phase(data->walStop,
+                                    [data]
+                                    {
+                                        if(data->wal)
+                                        {
+                                            stop_keeper_wal(*data->wal);
+                                            data->retained.setWalObserver(nullptr);
+                                            data->wal.reset();
+                                        }
+                                        return chl::CL_SUCCESS;
+                                    }))
+            return false;
+        // Safe data is not sufficient if an original outgoing call is unknown.
+        // Release only known snapshots, then prove all existing C2 slots idle.
+        if(!data->unregistered)
+        {
+            owners[0]->retirementReady = true;
+            if(!owners[0]->consumeKnownOutcomes(deadline) || !rpc::allControlIdle(*runtimes[0], 2, deadline) ||
+               !rpc::allControlIdle(*runtimes[1], 2, deadline))
+                return false;
+            // The same irreversible drain stays ready across caller attempts.
+            // Public entries are closed/idle, collectors and extractors joined,
+            // all retained data is archive-confirmed and outgoing work settled.
+            // Keep the actual admin MID until every managed publisher has
+            // parked its original target sends and native cleanup.
+            // Only a stop the deployment controller runs completes the
+            // barrier. A keeper sent SIGTERM directly (a test, an operator,
+            // a node agent) stops on its own, as v3.4.0 did: its data is
+            // already confirmed or in its WAL's exit summary, and a grapher
+            // still sending it reports gets a bounded failure.
+            if(rpc::ManagedStopBarrier::StopRequested(config))
+            {
+                if(!rpc::allControlIdle(*runtimes[2], 2, deadline))
+                    return false;
+                auto native = generation->snapshot();
+                if(data->publisherPermit && data->publisherPermit->done.load(std::memory_order_acquire) &&
+                   !data->publisherPermit->unsafe && data->publisherPermit->status != chl::CL_SUCCESS)
+                    data->publisherPermit.reset(); // Only a completed local proof observation is retried.
+                if(!phase(data->publisherPermit,
+                          [data, config, native, deadline]
+                          {
+                              std::string target;
+                              data->admin.get_service_as_string(target);
+                              target += "@" + std::to_string(data->admin.getProviderId());
+                              if(!rpc::ManagedStopBarrier::PublishReady(config,
+                                                                        data->conf.RECORDING_GROUP,
+                                                                        native.generation,
+                                                                        target,
+                                                                        {true, true, true, true, true}))
+                                  return int(chl::CL_ERR_SHUTDOWN_INCOMPLETE);
+                              while(!deadline.expired() && !rpc::ManagedStopBarrier::Permit(config,
+                                                                                            data->conf.RECORDING_GROUP,
+                                                                                            native.generation))
+                                  std::this_thread::sleep_for(10ms);
+                              return deadline.expired() ? int(chl::CL_ERR_SHUTDOWN_INCOMPLETE) : int(chl::CL_SUCCESS);
+                          }))
+                    return false;
+            }
+            while(data->registry && !deadline.expired())
+            {
+                int result = data->registry->send_unregister_msg(data->id, deadline);
+                if(result == chl::CL_SUCCESS)
+                    break;
+                if(result == chl::CL_ERR_OUTCOME_UNCONFIRMED)
+                    return false;
+                std::this_thread::sleep_for(1ms);
+            }
+            if(deadline.expired())
+                return false;
+            data->unregistered = true;
+            // The registry client's procedures reference the admin MID, which
+            // is finalized only once nothing does. Main is its only user, and
+            // the stats loop ended with the stop request.
+            data->registry.reset();
+        }
+        return rpc::retireServices(owners, runtimes, deadline);
+    };
+    // The steps a stop attempt left running when its deadline passed. Each
+    // keeps running on its worker; the wait for the grapher to confirm every
+    // chunk often outlasts one attempt (shutdown_ms), since the grapher's
+    // merged chunks close on their own longer window.
+    auto unsettledSteps = [&]
     {
-        LOG_WARNING("[ChronoKeeperInstance] Write handlers still running 10 s after the WAL stopped; deleting the "
-                    "recording service anyway");
+        std::vector<std::shared_ptr<rpc::LifecycleStep>> steps;
+        for(auto const& step: data->initialized)
+            if(step && !step->done.load(std::memory_order_acquire))
+                steps.push_back(step);
+        for(auto const* step: {&data->walStart,
+                               &data->start,
+                               &data->stopCollection,
+                               &data->durable,
+                               &data->stopExtraction,
+                               &data->walStop,
+                               &data->publisherPermit})
+            if(*step && !(*step)->done.load(std::memory_order_acquire))
+                steps.push_back(*step);
+        return steps;
+    };
+    sig_atomic_t observed = 0;
+    bool first = true;
+    std::optional<rpc::RpcDeadline> previous;
+    std::vector<std::shared_ptr<rpc::LifecycleStep>> leftRunning;
+    for(;;)
+    {
+        // Once a step the last attempt left running has finished, the stop
+        // goes on by itself, as after another SIGTERM: the deployment
+        // controller, and whoever else sent the first one, sends it once.
+        bool settled = std::any_of(leftRunning.begin(),
+                                   leftRunning.end(),
+                                   [](auto const& step) { return step->done.load(std::memory_order_acquire); });
+        if(!first && observed == stop_requests && !settled)
+        {
+            // A status write refused for capacity may still be admitted, but
+            // only before the deadline of the attempt that requested it.
+            publisher->pump(*runtimes[1], *previous, data);
+            std::this_thread::sleep_for(100ms);
+            continue;
+        }
+        first = false;
+        observed = stop_requests;
+        auto entered = rpc::RpcDeadline::Clock::now();
+        auto deadline = rpc::RpcDeadline::fromStart(entered, std::chrono::milliseconds(conf.RPC_POLICY.shutdown_ms));
+        previous = deadline;
+        auto attempt = ++lifecycle.attempts;
+        publisher->beginAttempt(attempt, entered);
+        lifecycle.quiesce();
+        // Close public admission before any status write is requested. The
+        // write itself runs on an admin worker under this attempt's deadline.
+        owners[1]->quiesce();
+        owners[2]->quiesce();
+        publisher->request(rpc::LifecyclePublisher::record(rpc::ShutdownState::Quiescing,
+                                                           chl::CL_ERR_SHUTDOWN_INCOMPLETE,
+                                                           attempt,
+                                                           entered,
+                                                           generation->snapshot(),
+                                                           data->store.nativeHandleCount() +
+                                                                   data->extraction.nativeHandleCount()));
+        publisher->pump(*runtimes[1], deadline, data);
+        // The Stopped record is written by the recording owner's cleanup
+        // callback; a drained runtime alone does not prove it is in place.
+        if(stop(deadline) && publisher->terminalPublished())
+        {
+            lifecycle.stopped();
+            return exitCode;
+        }
+        lifecycle.draining();
+        leftRunning = unsettledSteps();
+        if(!leftRunning.empty())
+            LOG_WARNING("[ChronoKeeper] stop attempt {} ran out with {} step(s) still running; the stop goes on when "
+                        "they finish",
+                        attempt,
+                        leftRunning.size());
+        // An expired attempt admits no more work; it stays Draining in memory.
+        if(!deadline.expired())
+        {
+            publisher->request(rpc::LifecyclePublisher::record(
+                    rpc::ShutdownState::Draining,
+                    chl::CL_ERR_SHUTDOWN_INCOMPLETE,
+                    attempt,
+                    entered,
+                    generation->snapshot(),
+                    data->store.nativeHandleCount() + data->extraction.nativeHandleCount(),
+                    std::nullopt,
+                    [attempt] {
+                        LOG_WARNING("[ChronoKeeper] stop attempt {} incomplete; retaining data and native owners",
+                                    attempt);
+                    }));
+            publisher->pump(*runtimes[1], deadline, data);
+        }
     }
-    delete keeperRecordingService;
-    // Shutdown extraction module
-    // drain extractionQueue and stop extraction xStreams
-    theExtractionModule.shutdownExtraction();
-    // Nothing calls into the retention store now, so its observer can go, and
-    // the WAL with it while Argobots is still up.
-    theTailStore.setWalObserver(nullptr);
-    theWal.reset();
-
-    // these are not probably needed as thallium handles the engine finalization...
-    //  recordingEngine.finalize();
-    //  collectionEngine.finalize();
-    delete extractionEngine;
-    delete recordingEngine;
-    delete dataAdminEngine;
-    LOG_INFO("[ChronoKeeperInstance] Shutdown completed. Exiting.");
-    return exit_code;
 }

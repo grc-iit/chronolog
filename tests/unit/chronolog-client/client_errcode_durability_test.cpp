@@ -29,5 +29,6 @@ TEST(ClientErrcode, ReservedAndExistingCodesKeepTheirMeaning)
     {
         EXPECT_STREQ(chronolog::to_string_client(code), "UnknownClientErrorCode");
     }
-    EXPECT_STREQ(chronolog::to_string_client(-22), "UnknownClientErrorCode");
+    // -22 begins the bounded-RPC codes.
+    EXPECT_STREQ(chronolog::to_string_client(-22), "CL_ERR_DEADLINE_EXCEEDED");
 }

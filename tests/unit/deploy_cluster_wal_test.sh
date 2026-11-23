@@ -114,15 +114,23 @@ summary() { # HOST EVENTS BYTES
 }
 all_clean() { summary nodeA 0 0 && summary nodeB 0 0 && summary nodeC 0 0; }
 
-# --stop: the processes are stopped by no-op stand-ins that print a line into
-# stop's output, so the table's place among the stops shows. The keepers' stand-in
-# prints only after a pause, as a keeper exits only after it writes its summary, so
-# the table comes first unless stop waits for the keepers to exit.
-parallel_remote_stop_processes() {
-    [[ "$(basename "$2")" == chrono-keeper ]] && sleep 0.3
-    echo "stop $(basename "$2")"
+# The deployment lifecycle (deployment_lifecycle.py) owns the processes and has
+# its own tests. Here it is a stand-in that logs each call, prints a line into
+# the command's output and returns LIFECYCLE_STATUS. Its stop prints only after a
+# pause, as the managed stop returns only after every keeper has exited and
+# written its summary, so the table comes first unless stop waits for it.
+LIFECYCLE_STATUS=0
+lifecycle() {
+    # The real one passes the --host routes in LIFECYCLE_HOST_ARGS first.
+    echo "lifecycle ${LIFECYCLE_HOST_ARGS[*]:+${LIFECYCLE_HOST_ARGS[*]} }$*" >> "$fixture/lifecycle-calls"
+    # Options such as --budget-ms come before the command.
+    while [[ "$1" == --* ]]; do shift 2; done
+    [[ "$1" == stop ]] && sleep 0.3
+    echo "lifecycle $1"
+    return "$LIFECYCLE_STATUS"
 }
-parallel_remote_check_all() { :; }
+lifecycle_hosts() { :; }
+fence_mutation() { :; }
 check_hosts_files() { :; }
 check_work_dir() { :; }
 run_stop() { # prints the output; returns stop's status
@@ -154,11 +162,14 @@ summary nodeC 0 0
 if run_stop; then fail "stop: pending events exit nonzero"; else pass "stop: pending events exit nonzero"; fi
 row nodeB 1 | grep -qE ' 7 +4096 +pending ' && pass "stop: pending counts shown" ||
     fail "stop: pending counts shown: $(cat "$fixture/stop-out")"
-# The players and the keepers stop together, in either order.
-grep -q '^stop chrono-player$' "$fixture/stop-out" && pass "stop: players stopped" || fail "stop: players stopped"
-in_order '^stop chrono-keeper$' '^stop chrono-grapher$' '^stop chrono-visor$' &&
-    pass "stop: keepers, graphers, then visor stopped before failing" ||
-    fail "stop: keepers, graphers, then visor stopped before failing: $(cat "$fixture/stop-out")"
+grep -q '^lifecycle stop$' "$fixture/stop-out" && pass "stop: the managed stop ran before failing" ||
+    fail "stop: the managed stop ran before failing: $(cat "$fixture/stop-out")"
+# The stop budget covers the keeper's confirmation wait from the conf template
+# (150 s when it sets none) plus 180 s.
+confirm_secs=$(jq -r '.chrono_keeper.DataStoreInternals.shutdown_confirm_timeout_secs // 150' "$CONF_FILE")
+grep -qE -- "--budget-ms $(((confirm_secs + 180) * 1000)) stop\$" "$fixture/lifecycle-calls" &&
+    pass "stop: the stop budget covers the keeper's confirmation wait" ||
+    fail "stop: the stop budget covers the keeper's confirmation wait: $(grep stop "$fixture/lifecycle-calls")"
 restart_advice() { # FILE: the advice after a WAL that is not clean, whole deployment restarted with the same options
     local text
     text=$(tr -s ' \n' ' ' < "$1")
@@ -167,9 +178,21 @@ restart_advice() { # FILE: the advice after a WAL that is not clean, whole deplo
 }
 restart_advice "$fixture/stop-out" && pass "stop: the error says to start again with the same options and host order" ||
     fail "stop: the error says to start again with the same options and host order: $(cat "$fixture/stop-out")"
-in_order '^stop chrono-keeper$' '^HOST +GROUP +PENDING_EVENTS' '^stop chrono-grapher$' &&
-    pass "stop: the table is printed after the keepers stop and before the graphers do" ||
-    fail "stop: the table is printed after the keepers stop and before the graphers do: $(cat "$fixture/stop-out")"
+in_order '^lifecycle stop$' '^HOST +GROUP +PENDING_EVENTS' &&
+    pass "stop: the table is printed after the managed stop returns" ||
+    fail "stop: the table is printed after the managed stop returns: $(cat "$fixture/stop-out")"
+
+# An incomplete managed stop leaves the keepers running: there is no table yet.
+setup
+all_clean
+LIFECYCLE_STATUS=27
+run_stop
+status=$?
+LIFECYCLE_STATUS=0
+[[ $status -eq 27 ]] && pass "stop: an incomplete managed stop exits 27" ||
+    fail "stop: an incomplete managed stop exits 27 (got $status): $(cat "$fixture/stop-out")"
+grep -q PENDING_EVENTS "$fixture/stop-out" && fail "stop: an incomplete managed stop prints no table" ||
+    pass "stop: an incomplete managed stop prints no table"
 
 # A count of 2^64 wraps to 0 in bash arithmetic; it is still pending.
 setup
@@ -221,7 +244,6 @@ if run_stop; then pass "stop: WAL off exits 0"; else fail "stop: WAL off exits 0
 grep -q PENDING_EVENTS "$fixture/stop-out" && fail "stop: WAL off prints no table" || pass "stop: WAL off prints no table"
 
 # --clean
-parallel_remote_check_processes() { :; }
 clean_output_dir() { :; }
 run_clean() { (clean) > "$fixture/clean-out" 2>&1; }
 
@@ -286,39 +308,27 @@ run_clean
     fail "clean: a WAL directory not named <hash>/<group> is not removed"
 grep -q "$other" "$fixture/clean-out" && pass "clean: the directory left behind is named" || fail "clean: the directory left behind is named"
 
-# --restart-keeper
-mkdir -p "$KEEPER_BIN_DIR"
-# no exec: the fake keeper keeps "<bin> --config <conf>" as its command line for
-# restart_keeper's pgrep, and runs 30 s
-printf '#!/usr/bin/env bash\necho "launched $*" >> "%s"\nfor _ in $(seq 30); do sleep 1; done\n' "$fixture/launches" > "$KEEPER_BIN"
-chmod +x "$KEEPER_BIN"
+# --restart-keeper: the lifecycle relaunches the keeper, and refuses while the
+# recorded one still runs (test_deployment_lifecycle.py checks that part).
 setup
-echo "old run" > "$MONITOR_DIR/chrono-keeper-nodeB.launch.log"
-restart_start=$SECONDS
+rm -f "$fixture/lifecycle-calls"
 if (restart_keeper nodeB) > "$fixture/restart-out" 2>&1; then pass "restart: exits 0"; else fail "restart: exits 0: $(cat "$fixture/restart-out")"; fi
-# the fake keeper runs 30 s; a launch that keeps the ssh session open returns only then
-(( SECONDS - restart_start < 10 )) && pass "restart: returns while the relaunched keeper runs" ||
-    fail "restart: returns while the relaunched keeper runs (took $((SECONDS - restart_start)) s)"
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-    [[ -s "$fixture/launches" ]] && break
-    sleep 0.2
-done
-[[ "$(cat "$fixture/launches" 2> /dev/null)" == "launched --config $CONF_FILE.1.keeper.nodeB" ]] &&
-    pass "restart: keeper launched with that host's generated conf" ||
-    fail "restart: keeper launched with that host's generated conf: $(cat "$fixture/launches" 2> /dev/null)"
-head -n 1 "$MONITOR_DIR/chrono-keeper-nodeB.launch.log" | grep -q "old run" &&
-    pass "restart: the old launch log is kept" || fail "restart: the old launch log is kept"
-if (restart_keeper nodeB) > "$fixture/restart-out" 2>&1; then fail "restart: refuses while the keeper runs"; else
-    grep -q "still running" "$fixture/restart-out" && pass "restart: refuses while the keeper runs" ||
-        fail "restart: refuses while the keeper runs: $(cat "$fixture/restart-out")"
+[[ "$(cat "$fixture/lifecycle-calls" 2> /dev/null)" == "lifecycle --host nodeB restart-keeper --executable $KEEPER_BIN --config $CONF_FILE.1.keeper.nodeB --output $MONITOR_DIR/chrono-keeper-nodeB.launch.log" ]] &&
+    pass "restart: the lifecycle relaunches that host's keeper with its generated conf" ||
+    fail "restart: the lifecycle relaunches that host's keeper with its generated conf: $(cat "$fixture/lifecycle-calls" 2> /dev/null)"
+LIFECYCLE_STATUS=27
+if (restart_keeper nodeB) > "$fixture/restart-out" 2>&1; then fail "restart: a refused relaunch exits nonzero"; else
+    pass "restart: a refused relaunch exits nonzero"
 fi
-[[ $(wc -l < "$fixture/launches") -eq 1 ]] && pass "restart: no second keeper launched" || fail "restart: no second keeper launched"
-pkill -f "$fixture/bin/chrono-keeper"
+LIFECYCLE_STATUS=0
+rm -f "$fixture/lifecycle-calls"
 if (restart_keeper nodeZ) > "$fixture/restart-out" 2>&1; then fail "restart: refuses a host without a conf"; else
     grep -q "nodeZ" "$fixture/restart-out" && pass "restart: refuses a host without a conf" || fail "restart: refuses a host without a conf"
 fi
 down=nodeB
 if (restart_keeper nodeB) > /dev/null 2>&1; then fail "restart: refuses an unreachable host"; else pass "restart: refuses an unreachable host"; fi
+[[ ! -e "$fixture/lifecycle-calls" ]] && pass "restart: nothing relaunched for a refused host" ||
+    fail "restart: nothing relaunched for a refused host: $(cat "$fixture/lifecycle-calls")"
 
 # --start with --wal-dir: each keeper host runs the real wal_dir_probe.sh over
 # the fake ssh while its conf is generated, before anything is launched
@@ -338,7 +348,7 @@ update_client_monitor_file_path() { :; }
 check_rpc_comm_conf() { :; }
 check_archive_mount() { :; }
 get_host_ip() { echo 127.0.0.1; }
-parallel_remote_launch_processes() { echo "launch $4 from $3" >> "$fixture/start-launches"; }
+launch_hosts() { echo "launch $(basename "$2") from $1" >> "$fixture/start-launches"; }
 run_start() { # WAL_DIR_LIST: prints start's output into start-out; returns start's status
     setup
     rm -f -- "$CONF_FILE".*.keeper.* "$fixture/start-launches"

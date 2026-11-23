@@ -39,6 +39,8 @@
 #   -k N         keepers  (default 2, as in CI)
 #   -g N         graphers (default 2, as in CI)
 #   -p N         players  (default 2, as in CI)
+#   --rpc-protocol P      daemon/client RPC transport: ofi+tcp (default) or ofi+sockets
+#   --rpc-tcp-iface IFACE reachable container interface for ofi+tcp (default eth0)
 #   --skip-build reuse whatever is already installed in the shared volume
 #   --keep       leave containers running after the run (for debugging)
 #   -h           this help
@@ -91,6 +93,8 @@ NFS_PASSES=()
 NFS_DESTROY_PROFILE=default
 NFS_EXPORT=/srv/chronolog-nfs-localci
 NFS_CACHE_SECS=60
+RPC_PROTOCOL=ofi+tcp
+RPC_TCP_IFACE=eth0
 NFS_OVERRIDE="${REPO_ROOT}/dynamic-compose.local-ci.nfs.yaml"
 NFS_OVERRIDE_NEW=""
 NFS_SERVER_UP=0
@@ -112,6 +116,8 @@ while [ $# -gt 0 ]; do
         -k) NUM_KEEPERS="$2"; shift 2 ;;
         -g) NUM_GRAPHERS="$2"; shift 2 ;;
         -p) NUM_PLAYERS="$2"; shift 2 ;;
+        --rpc-protocol) RPC_PROTOCOL="$2"; shift 2 ;;
+        --rpc-tcp-iface) RPC_TCP_IFACE="$2"; shift 2 ;;
         --skip-build) SKIP_BUILD=1; shift ;;
         --keep) KEEP=1; shift ;;
         --nfs) NFS=1; shift ;;
@@ -127,6 +133,16 @@ while [ $# -gt 0 ]; do
         *) echo "unknown option: $1"; usage 1 ;;
     esac
 done
+
+case "${RPC_PROTOCOL}" in
+    ofi+sockets) ;;
+    ofi+tcp)
+        [[ "${RPC_TCP_IFACE}" =~ ^[a-zA-Z0-9_.:-]+$ ]] || { echo "invalid --rpc-tcp-iface: ${RPC_TCP_IFACE}" >&2; exit 2; }
+        case "${RPC_TCP_IFACE}" in lo|lo[0-9]*) echo "loopback is not allowed for distributed TCP: ${RPC_TCP_IFACE}" >&2; exit 2 ;; esac
+        ;;
+    *) echo "unsupported --rpc-protocol: ${RPC_PROTOCOL}" >&2; exit 2 ;;
+esac
+
 
 NUM_CONTAINERS=$(( NUM_KEEPERS + NUM_GRAPHERS + NUM_PLAYERS + 1 ))
 if [ "${NFS}" = 1 ]; then
@@ -184,6 +200,16 @@ summary() {
 
 cleanup() {
     local rc=$?
+    if [ "${rc}" -ne 0 ] && [ "${CONTAINERS_CREATED}" = 1 ] && [ "${KEEP}" != 1 ]; then
+        local failure_dir
+        failure_dir=$(mktemp -d "${TMPDIR:-/tmp}/chronolog-distributed-failure.XXXXXX")
+        docker cp "chronolog-c1:${WORK_DIR}/monitor" "${failure_dir}/monitor" >/dev/null 2>&1 || true
+        docker cp "chronolog-c1:${WORK_DIR}/conf" "${failure_dir}/conf" >/dev/null 2>&1 || true
+        for artifact in chrono_bench_write.log telemetry_writer.log tail_read_output.log reader_to_csv.log py_tail_writer.log shutdown_writer.log shutdown_stop.log shutdown_events.log shutdown_events.ids shutdown_data_check.json; do
+            docker cp "chronolog-c1:/tmp/${artifact}" "${failure_dir}/${artifact}" >/dev/null 2>&1 || true
+        done
+        echo "failure logs and configs saved: ${failure_dir}"
+    fi
     if [ "${KEEP}" = "1" ]; then
         # stage 11c patched the conf template of the cluster left up
         [ "${WAL_CONF_PATCHED}" = 1 ] && wal_restore_conf
@@ -232,7 +258,9 @@ wal_restore_conf() {
 # down too. Containers are torn down only once this run has created them: a
 # compose file left by an earlier --keep run may describe containers still in
 # use.
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # ------------------------------------------------------------------ preflight --
 stage "Preflight"
@@ -309,6 +337,8 @@ EOF
     <<: *x-common
     hostname: c${i}
     container_name: chronolog-c${i}
+    environment:
+      - FI_TCP_IFACE=${RPC_TCP_IFACE}
     volumes:
       - shared_home_localci:/home/grc-iit
       - ${REPO_ROOT}:/workspace:ro
@@ -356,7 +386,7 @@ stage_ok
 stage "2. Create grc-iit user, SSH and hosts files"
 for i in $(seq 1 "${NUM_CONTAINERS}"); do
     dex_root "c${i}" bash -c "
-        apt-get update >/dev/null 2>&1 && apt-get install -y openssh-server sudo pssh dnsutils jq chrpath >/dev/null 2>&1 || true
+        apt-get update >/dev/null 2>&1 && apt-get install -y openssh-server sudo pssh dnsutils jq chrpath iproute2 >/dev/null 2>&1 || true
         if ! id -u grc-iit >/dev/null 2>&1; then
             useradd -m -s /bin/bash grc-iit
             echo 'grc-iit ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
@@ -365,6 +395,20 @@ for i in $(seq 1 "${NUM_CONTAINERS}"); do
         service ssh start >/dev/null 2>&1 || /etc/init.d/ssh start >/dev/null 2>&1 || true
     " || stage_fail "user/ssh setup failed on c${i}"
 done
+
+if [ "${RPC_PROTOCOL}" = "ofi+tcp" ]; then
+    for i in $(seq 1 "${NUM_CONTAINERS}"); do
+        dex "c${i}" bash -c "ip -o link show dev '${RPC_TCP_IFACE}' | grep -qv 'LOOPBACK'" \
+            || stage_fail "TCP interface ${RPC_TCP_IFACE} is missing, loopback, or iproute2 is unavailable in c${i}"
+    done
+    for i in $(seq 1 "${NUM_CONTAINERS}"); do
+        peer=$(( i % NUM_CONTAINERS + 1 ))
+        peer_ip=$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" "chronolog-c${peer}")
+        dex "c${i}" bash -c "ip route get '${peer_ip}' | grep -q 'dev ${RPC_TCP_IFACE}'" \
+            || stage_fail "TCP interface ${RPC_TCP_IFACE} does not route from c${i} to c${peer}"
+    done
+    echo "TCP interface verified: ${RPC_TCP_IFACE} routes between the actual containers"
+fi
 
 dex c1 bash -c "mkdir -p /home/grc-iit/.ssh && ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' >/dev/null 2>&1 || true"
 dex c1 bash -c "cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys"
@@ -422,6 +466,31 @@ else
         ./tools/deploy/local_single_user_deploy.sh -i -I ${INSTALL_DIR}
     " || stage_fail "build/install failed"
 fi
+stage_ok
+
+# Set protocol fields in the installed runtime configuration, never in the
+# tracked source template. The same value reaches every daemon endpoint,
+# Keeper/Grapher extraction engine, and public client endpoint.
+stage "3b. Set and audit the selected RPC transport"
+dex c1 bash -c "
+    set -e
+    CONF=${WORK_DIR}/conf/default-chrono-conf.json
+    CLIENT=${WORK_DIR}/conf/default-chrono-client-conf.json
+    jq --arg protocol '${RPC_PROTOCOL}' \
+      '(.. | objects | select(has(\"protocol_conf\"))) |= (.protocol_conf = \$protocol) |
+       (.. | objects | select(has(\"extraction_protocol\"))) |= (.extraction_protocol = \$protocol)' \
+      \$CONF > \$CONF.tmp && mv \$CONF.tmp \$CONF
+    jq --arg protocol '${RPC_PROTOCOL}' \
+      '(.. | objects | select(has(\"protocol_conf\"))) |= (.protocol_conf = \$protocol)' \
+      \$CLIENT > \$CLIENT.tmp && mv \$CLIENT.tmp \$CLIENT
+    jq -e --arg p '${RPC_PROTOCOL}' '([.. | objects | select(has(\"protocol_conf\")) | .protocol_conf] as \$v | (\$v|length) >= 10 and (\$v|all(. == \$p)))' \$CONF >/dev/null
+    jq -e --arg p '${RPC_PROTOCOL}' '([.. | objects | select(has(\"extraction_protocol\")) | .extraction_protocol] as \$v | (\$v|length) == 2 and (\$v|all(. == \$p)))' \$CONF >/dev/null
+    jq -e --arg p '${RPC_PROTOCOL}' '([.. | objects | select(has(\"protocol_conf\")) | .protocol_conf] as \$v | (\$v|length) >= 1 and (\$v|all(. == \$p)))' \$CLIENT >/dev/null
+    echo 'RPC service protocols:'
+    jq '[.. | objects | select(has(\"protocol_conf\")) | .protocol_conf] | unique' \$CONF
+    echo 'Keeper/Grapher extraction protocols:'
+    jq '[.. | objects | select(has(\"extraction_protocol\")) | .extraction_protocol] | unique' \$CONF
+" || stage_fail "could not configure and audit all RPC/extraction endpoints"
 stage_ok
 
 # --------------------------------------------------- 4. verify install --------
@@ -492,6 +561,10 @@ if [ "${DEPLOY_BAD}" != "0" ]; then
     echo "--- processes seen ---"; printf '%s\n' "${PROCLIST}"
     stage_fail "deployment verification failed"
 fi
+dex c1 python3 "${REPO_DIR}/tests/distributed/rpc_config_audit.py" "${WORK_DIR}" \
+    "${RPC_PROTOCOL}" "${NUM_KEEPERS}" "${NUM_GRAPHERS}" "${NUM_PLAYERS}" \
+    || stage_fail "actual launched daemon configs or native identities do not match the selected RPC/extraction protocol"
+echo "  ✅ Generated group and component configs use ${RPC_PROTOCOL}; keeper/grapher extraction fields match"
 stage_ok
 
 # Stages 7-11 are skipped under --nfs-only and --wal-restart-only; the fi is
@@ -501,7 +574,7 @@ if [ "${NFS_ONLY}" = 0 ] && [ "${WAL_RESTART_ONLY}" = 0 ]; then
 # --------------------------------------------------- 7. perf test -------------
 stage "7. Client performance test (write path)"
 dex c1 bash -c "
-    set -e
+    set -euo pipefail
     cd ${REPO_DIR}
     source /home/grc-iit/spack/share/spack/setup-env.sh
     spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
@@ -512,7 +585,7 @@ dex c1 bash -c "
     cd ${WORK_DIR}
     timeout 300 \$MPIEXEC -l -n ${CLIENT_HOSTS} -f conf/hosts_client \
       tools/benchmark/chrono-bench --config conf/default-chrono-client-conf.json \
-      -a 4096 -b 4096 -s 4096 -n 1024 -t 1 -h 1 -p -y 2>&1 | tail -20
+      -a 4096 -b 4096 -s 4096 -n 1024 -t 1 -h 1 -p 2>&1 | tee /tmp/chrono_bench_write.log | tail -20
 " || stage_fail "performance test failed"
 stage_ok
 
@@ -535,7 +608,7 @@ dex c1 bash -c "
     timeout 240 \$MPIEXEC -n ${CLIENT_HOSTS} -f conf/hosts_client \
       examples/chrono-client-example-distributed-telemetry-writer \
       --config \$CONF -d 30 -i 5 > /tmp/telemetry_writer.log 2>&1 || RC=\$?
-    [ \$RC -eq 0 ] || { echo 'writer failed'; tail -20 /tmp/telemetry_writer.log; exit 1; }
+    [ \$RC -eq 0 ] || { echo 'writer failed'; tail -20 /tmp/telemetry_writer.log; grep -h 'DistributedTelemetryWriter.*failed' /tmp/telemetry_writer.log; exit 1; }
     echo '  ✅ telemetry written'
 
     echo '--- [2/3] tail read: chrono-bench -l ---'
@@ -648,75 +721,13 @@ stage_ok
 
 # --------------------------------------------------- 11. keeper shutdown ------
 stage "11. Keeper shutdown delivers its retained chunks"
-dex c1 bash -c "
-    set -e
-    cd ${REPO_DIR}
-    source /home/grc-iit/spack/share/spack/setup-env.sh
-    spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
-    MPIEXEC=${REPO_DIR}/.spack-env/view/bin/mpiexec
-    [ -x \"\$MPIEXEC\" ] || MPIEXEC=\$(command -v mpiexec)
-    export LD_LIBRARY_PATH=${WORK_DIR}/lib:\$LD_LIBRARY_PATH
-    cd ${WORK_DIR}
-
-    # Write a burst and SIGTERM the keepers as soon as the writer returns: its
-    # stories are still open on the keepers (their pipelines wait out the
-    # acceptance window), so their last chunks seal during shutdown and must be
-    # delivered on the way out. Waiting for them to seal first would leave the
-    # shutdown nothing to deliver and let this stage pass without testing it.
-    echo \"  writing a burst, then stopping the keepers while its last chunks are still open ...\"
-    RC=0
-    timeout 120 \$MPIEXEC -n 2 -f conf/hosts_client \
-      examples/chrono-client-example-distributed-telemetry-writer \
-      --config conf/default-chrono-client-conf.json -d 15 -i 3 > /tmp/shutdown_writer.log 2>&1 || RC=\$?
-    if [ \$RC -ne 0 ]; then
-        echo \"  telemetry writer failed (exit \$RC)\"
-        tail -8 /tmp/shutdown_writer.log | sed 's/^/    /' || true
-        exit 1
-    fi
-
-    # SIGTERM only the keepers: the graphers must stay up to receive what the
-    # keepers send on the way out and to confirm it written. SIGKILL would
-    # bypass shutdown entirely. A keeper waits up to shutdown_confirm_timeout_secs
-    # (150) for that confirmation, so allow 240s.
-    parallel-ssh -h conf/hosts_keeper -t 30 'pkill -TERM -f chrono-keeper' >/dev/null 2>&1 || true
-    for i in \$(seq 1 80); do
-        REMAIN=\$(parallel-ssh -h conf/hosts_keeper -i -t 10 'pgrep -c -x chrono-keeper || true' 2>/dev/null | grep -cE '^[1-9]' || true)
-        [ \"\$REMAIN\" = 0 ] && break
-        sleep 3
-    done
-    sleep 10
-
-    # Every chunk the retention store still holds when it is destroyed is logged
-    # as 'shutdown with unconfirmed'. shipped=0 never reached a grapher; shipped=1
-    # reached it but was not confirmed written. Both count, as in CI. A transfer
-    # logged after 'Initiating shutdown procedures' is a chunk delivered on the
-    # way out; at least one keeper must have one, or the shutdown path was not
-    # exercised. A log rotated past 1 MB continues in <name>.<n>.log, oldest
-    # highest, so each keeper's files are read oldest first.
-    EXPECTED=\$(wc -l < conf/hosts_keeper)
-    LOGS=\$(ls monitor/chrono-keeper*.log 2>/dev/null | grep -v -E '\\.launch\\.log\$|\\.[0-9]+\\.log\$' || true)
-    DONE=0
-    LOST_TOTAL=0
-    SHUT_SENT_TOTAL=0
-    for f in \$LOGS; do
-        FILES=\"\$(ls -r \${f%.log}.[0-9]*.log 2>/dev/null || true) \$f\"
-        SENT=\$(cat \$FILES | grep -c 'ChunkExtractorRDMA\\] Transfered StoryChunk' || true)
-        SHUT_SENT=\$(cat \$FILES | awk '/ChronoKeeperInstance\\] Initiating shutdown procedures/ { s = 1 } s && /ChunkExtractorRDMA\\] Transfered StoryChunk/ { n++ } END { print n + 0 }')
-        LOST=\$(cat \$FILES | grep -c 'shutdown with unconfirmed' || true)
-        if cat \$FILES | grep -q 'ChronoKeeperInstance\\] Shutdown completed'; then
-            DONE=\$(( DONE + 1 ))
-            echo \"  \$(basename \$f): shut down; \$SENT chunk(s) delivered, \$SHUT_SENT of them after SIGTERM, \$LOST unconfirmed at exit\"
-        else
-            echo \"  ❌ \$(basename \$f): no 'Shutdown completed'; \$SENT chunk(s) delivered, \$SHUT_SENT after SIGTERM, \$LOST unconfirmed\"
-        fi
-        cat \$FILES | grep -h 'Flushed .* unshipped chunk' | sed 's/^/    /' || true
-        cat \$FILES | grep -h 'shutdown with unconfirmed' | head -5 | sed 's/^/    /' || true
-        LOST_TOTAL=\$(( LOST_TOTAL + LOST ))
-        SHUT_SENT_TOTAL=\$(( SHUT_SENT_TOTAL + SHUT_SENT ))
-    done
-    echo \"  keepers that completed shutdown: \$DONE / \$EXPECTED; chunks delivered after SIGTERM: \$SHUT_SENT_TOTAL; unconfirmed at exit: \$LOST_TOTAL\"
-    [ \$DONE -ge \$EXPECTED ] && [ \$LOST_TOTAL -eq 0 ] && [ \$SHUT_SENT_TOTAL -gt 0 ]
-" || stage_fail "the writer failed, a keeper delivered nothing on shutdown, or a chunk was never confirmed written"
+# A fresh named story supplies acknowledged identities. The verifier checks an
+# empty archive before stop, an unsealed Keeper window at actual shutdown, all
+# original native owners retired, and the exact archive identities afterward.
+dex c1 env LD_LIBRARY_PATH="${WORK_DIR}/lib" python3 \
+    "${REPO_DIR}/tests/distributed/rpc_shutdown_data_check.py" "${WORK_DIR}" "${REPO_DIR}" \
+    /home/grc-iit/chronolog-build/Release \
+    || stage_fail "retained shutdown events, original native retirement, or archive identity verification failed"
 stage_ok
 
 fi # stages 7-11

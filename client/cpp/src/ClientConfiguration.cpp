@@ -28,6 +28,16 @@ bool ClientConfiguration::load_from_file(const std::string& path)
         return false;
     }
 
+    RpcTimeoutPolicy policy;
+    json_object* policy_object = nullptr;
+    if(json_object_object_get_ex(chrono_client, "RpcPolicy", &policy_object) &&
+       parseRpcTimeoutPolicy(policy_object, policy) != CL_SUCCESS)
+    {
+        json_object_put(root);
+        return false;
+    }
+    PORTAL_CONF.RPC_POLICY = policy;
+
     json_object* portal_service;
     if(json_object_object_get_ex(chrono_client, "VisorClientPortalService", &portal_service))
     {

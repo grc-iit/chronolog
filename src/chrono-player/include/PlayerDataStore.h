@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <thallium.hpp>
+#include <LifecycleRecord.h>
 
 #include <StoryChunkIngestionQueue.h>
 #include <StoryPipeline.h>
@@ -45,6 +46,7 @@ public:
     {}
 
     ~PlayerDataStore();
+    std::size_t nativeHandleCount() const noexcept { return nativeHandles_.load(std::memory_order_acquire); }
 
     bool is_running() const { return (RUNNING == state); }
 
@@ -98,7 +100,9 @@ private:
 
     PlayerDataStore& operator=(PlayerDataStore const&) = delete;
 
-    DataStoreState state;
+    std::atomic<std::size_t> nativeHandles_{0};
+    std::atomic<DataStoreState> state;
+    rpc::JoinRecord collectionJoin;
     std::mutex dataStoreStateMutex;
     StoryChunkIngestionQueue& theIngestionQueue;
     std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
