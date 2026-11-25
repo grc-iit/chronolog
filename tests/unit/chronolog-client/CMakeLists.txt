@@ -49,6 +49,33 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chronolog_client_query_service_address_test DESTINATION tests)
 endif()
 
+# PlaybackQueryRpcClient lifetime (GTest, #707): deleting one player's route
+# leaves the other routes of the client context working. Fake playback services
+# over ofi+sockets on 127.0.0.1.
+add_executable(chronolog_client_playback_query_rpc_client_lifetime_test
+    playback_query_rpc_client_lifetime_test.cpp
+)
+
+target_include_directories(chronolog_client_playback_query_rpc_client_lifetime_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/src
+)
+
+target_link_libraries(chronolog_client_playback_query_rpc_client_lifetime_test PRIVATE
+    GTest::gtest_main
+    chronolog_client
+    chrono_rpc
+    thallium
+)
+
+set_target_properties(chronolog_client_playback_query_rpc_client_lifetime_test PROPERTIES
+    OUTPUT_NAME chronolog-test-client-playback-query-rpc-client-lifetime)
+gtest_discover_tests(chronolog_client_playback_query_rpc_client_lifetime_test TEST_PREFIX "Unit_ChronologClient_"
+    PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chronolog_client_playback_query_rpc_client_lifetime_test DESTINATION tests)
+endif()
+
 # User name a client logs at start, with or without a controlling terminal
 add_executable(chronolog_client_login_name_test
     client_login_name_test.cpp
@@ -69,6 +96,55 @@ gtest_discover_tests(chronolog_client_login_name_test TEST_PREFIX "Unit_Chronolo
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chronolog_client_login_name_test DESTINATION tests)
 endif()
+
+add_executable(chronolog_rpc_policy_test rpc_policy_test.cpp)
+target_include_directories(chronolog_rpc_policy_test PRIVATE ${CMAKE_SOURCE_DIR}/client/cpp/include ${CMAKE_SOURCE_DIR}/client/cpp/src)
+target_link_libraries(chronolog_rpc_policy_test PRIVATE GTest::gtest_main chronolog_client)
+gtest_discover_tests(chronolog_rpc_policy_test TEST_PREFIX "Unit_ChronologRpc_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chronolog_rpc_policy_test DESTINATION tests)
+endif()
+
+add_executable(chronolog_timer_test chronolog_timer_test.cpp)
+target_include_directories(chronolog_timer_test PRIVATE ${CMAKE_SOURCE_DIR}/client/cpp/include ${CMAKE_SOURCE_DIR}/client/cpp/src)
+target_link_libraries(chronolog_timer_test PRIVATE GTest::gtest_main chronolog_client chrono_rpc thallium)
+set_target_properties(chronolog_timer_test PROPERTIES OUTPUT_NAME chronolog-test-client-timer)
+gtest_discover_tests(chronolog_timer_test TEST_PREFIX "Unit_ChronologClient_" PROPERTIES TIMEOUT 30)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chronolog_timer_test DESTINATION tests)
+endif()
+
+add_executable(metadata_operation_state_test metadata_operation_state_test.cpp)
+target_include_directories(metadata_operation_state_test PRIVATE ${CMAKE_SOURCE_DIR}/client/cpp/src)
+target_link_libraries(metadata_operation_state_test PRIVATE GTest::gtest_main chronolog_client)
+gtest_discover_tests(metadata_operation_state_test TEST_PREFIX "Unit_ChronologClient_")
+
+# Native peers live in a child so the real client owns cold ABT startup.
+add_executable(client_native_peer ${CMAKE_SOURCE_DIR}/tests/support/client_native_peer.cpp)
+target_include_directories(client_native_peer PRIVATE ${CMAKE_SOURCE_DIR}/tests/support ${CMAKE_SOURCE_DIR}/src/chrono-common/include ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_compile_definitions(client_native_peer PRIVATE CHRONOLOG_NATIVE_PEER_PATH="unused")
+target_link_libraries(client_native_peer PRIVATE chronolog_client thallium)
+target_include_directories(chronolog_timer_test PRIVATE ${CMAKE_SOURCE_DIR}/tests/support)
+target_compile_definitions(chronolog_timer_test PRIVATE CHRONOLOG_NATIVE_PEER_PATH="$<TARGET_FILE:client_native_peer>")
+add_dependencies(chronolog_timer_test client_native_peer)
+
+add_executable(append_deadline_test append_deadline_test.cpp)
+target_link_libraries(append_deadline_test PRIVATE GTest::gtest_main chronolog_client)
+gtest_discover_tests(append_deadline_test TEST_PREFIX "Unit_ChronologClient_")
+
+add_executable(tail_deadline_test tail_deadline_test.cpp)
+target_include_directories(tail_deadline_test PRIVATE ${CMAKE_SOURCE_DIR}/client/cpp/src ${CMAKE_SOURCE_DIR}/tests/support)
+target_compile_definitions(tail_deadline_test PRIVATE CHRONOLOG_NATIVE_PEER_PATH="$<TARGET_FILE:client_native_peer>")
+target_link_libraries(tail_deadline_test PRIVATE GTest::gtest_main chronolog_client chrono_rpc thallium)
+add_dependencies(tail_deadline_test client_native_peer)
+# This fixture and its child native peer bind only 127.0.0.1.
+gtest_discover_tests(tail_deadline_test TEST_PREFIX "Unit_ChronologClient_"
+    PROPERTIES TIMEOUT 30 ENVIRONMENT "FI_TCP_IFACE=lo")
+
+add_executable(replay_deadline_test replay_deadline_test.cpp)
+target_include_directories(replay_deadline_test PRIVATE ${CMAKE_SOURCE_DIR}/client/cpp/src)
+target_link_libraries(replay_deadline_test PRIVATE GTest::gtest_main chronolog_client chrono_rpc thallium)
+gtest_discover_tests(replay_deadline_test TEST_PREFIX "Unit_ChronologClient_" PROPERTIES TIMEOUT 30)
 
 # Durability error codes
 add_executable(chronolog_client_errcode_durability_test
@@ -111,36 +187,45 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chronolog_client_log_event_options_test DESTINATION tests)
 endif()
 
-# Durable send path: StoryHandleImpl::log_event(record, options, event_time)
-# and KeeperRecordingClient::send_durable_event_msg against a fake keeper, in
-# the test process or, for the tests that kill it, in a child process
-add_executable(chronolog_client_durable_send_test
-    client_durable_send_test.cpp
-)
-
-target_include_directories(chronolog_client_durable_send_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/client/cpp/include
-    ${CMAKE_SOURCE_DIR}/client/cpp/src
-)
-
-# its own main(): the executable is also the keeper process of the tests that kill one
-target_link_libraries(chronolog_client_durable_send_test PRIVATE
-    GTest::gtest
-    chronolog_client
-    thallium
-)
-
-set_target_properties(chronolog_client_durable_send_test PROPERTIES OUTPUT_NAME chronolog-test-client-durable-send)
-gtest_discover_tests(chronolog_client_durable_send_test TEST_PREFIX "Unit_ChronologClient_" PROPERTIES TIMEOUT 60)
-if(CHRONOLOG_INSTALL_TESTS)
-    chronolog_install_target(chronolog_client_durable_send_test DESTINATION tests)
-endif()
+# StoryHandle::log_event(record, options, event_time) through the owned RPC
+# runtime, against a keeper in the child native peer.
+add_executable(durable_deadline_test durable_deadline_test.cpp)
+target_include_directories(durable_deadline_test PRIVATE ${CMAKE_SOURCE_DIR}/client/cpp/src ${CMAKE_SOURCE_DIR}/tests/support)
+target_compile_definitions(durable_deadline_test PRIVATE CHRONOLOG_NATIVE_PEER_PATH="$<TARGET_FILE:client_native_peer>")
+target_link_libraries(durable_deadline_test PRIVATE GTest::gtest_main chronolog_client chrono_rpc thallium)
+add_dependencies(durable_deadline_test client_native_peer)
+# This fixture and its child native peer bind only 127.0.0.1.
+gtest_discover_tests(durable_deadline_test TEST_PREFIX "Unit_ChronologClient_"
+    PROPERTIES TIMEOUT 30 ENVIRONMENT "FI_TCP_IFACE=lo")
 
 # Python binding of Durability, LogEventOptions and log_event(record, options)
 if(TARGET py_chronolog_client)
     find_package(Python COMPONENTS Interpreter REQUIRED)
     add_test(NAME Unit_PyClient_DurableBinding
         COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/py_client_durable_binding_test.py)
+    set(py_client_test_environment "PYTHONPATH=$<TARGET_FILE_DIR:py_chronolog_client>")
+    # In an AddressSanitizer build the module needs the ASan runtime loaded
+    # first, because the Python interpreter is not built with it. It needs
+    # libstdc++ preloaded too: Python does not link libstdc++, and without it
+    # the runtime finds no __cxa_throw to intercept. Leak checking is off for
+    # this test only: CPython leaves objects allocated at exit by design, so
+    # the report would be about the interpreter, not the binding.
+    if(CMAKE_CXX_FLAGS MATCHES "-fsanitize=address")
+        execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libasan.so
+            OUTPUT_VARIABLE py_client_asan_runtime OUTPUT_STRIP_TRAILING_WHITESPACE)
+        execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++.so
+            OUTPUT_VARIABLE py_client_cxx_runtime OUTPUT_STRIP_TRAILING_WHITESPACE)
+        # -print-file-name returns the bare name when it finds no such
+        # library (clang names its runtime libclang_rt.asan); the test then
+        # runs without the preload and fails to load the module.
+        if(IS_ABSOLUTE "${py_client_asan_runtime}" AND IS_ABSOLUTE "${py_client_cxx_runtime}")
+            list(APPEND py_client_test_environment "LD_PRELOAD=${py_client_asan_runtime}:${py_client_cxx_runtime}"
+                 "ASAN_OPTIONS=detect_leaks=0")
+        else()
+            message(WARNING "Unit_PyClient_DurableBinding: ${CMAKE_CXX_COMPILER} has no libasan.so or "
+                            "libstdc++.so; the test will not load the ASan-built module")
+        endif()
+    endif()
     set_tests_properties(Unit_PyClient_DurableBinding PROPERTIES
-        ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:py_chronolog_client>")
+        ENVIRONMENT "${py_client_test_environment}")
 endif()

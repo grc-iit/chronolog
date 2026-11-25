@@ -12,6 +12,7 @@
 #include <unordered_set>
 #include <vector>
 #include <thallium.hpp>
+#include <LifecycleRecord.h>
 
 #include <HDF5FileChunkExtractor.h>
 #include <StoryPipeline.h>
@@ -61,6 +62,7 @@ public:
     {}
 
     ~GrapherDataStore();
+    std::size_t nativeHandleCount() const noexcept { return nativeHandles_.load(std::memory_order_acquire); }
 
     bool is_running() const { return (RUNNING == state); }
 
@@ -154,7 +156,9 @@ private:
     void enqueueDestroyTask(DestroyTask&& task);
     void drainExtractionQueueOrTimeout();
 
-    DataStoreState state;
+    std::atomic<std::size_t> nativeHandles_{0};
+    std::atomic<DataStoreState> state;
+    rpc::JoinRecord collectionJoin;
     std::mutex dataStoreStateMutex;
     ChunkIngestionQueue& theIngestionQueue;
     StoryChunkExtractionQueue& theExtractionQueue;

@@ -16,6 +16,7 @@ add_executable(story_chunk_test
 
 target_include_directories(story_chunk_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-rpc/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 
@@ -232,6 +233,34 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chunk_sender_answer_test DESTINATION tests)
 endif()
 
+# RDMATransferAgent lifetime (GTest, #707): deleting one agent leaves the other
+# agents of its engine working. Two grapher receive services over ofi+sockets on
+# 127.0.0.1.
+add_executable(rdma_transfer_agent_lifetime_test
+    chrono_common_rdma_transfer_agent_lifetime_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp
+)
+
+target_include_directories(rdma_transfer_agent_lifetime_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(rdma_transfer_agent_lifetime_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    chrono_rpc
+    thallium
+)
+
+set_target_properties(rdma_transfer_agent_lifetime_test PROPERTIES OUTPUT_NAME chronolog-test-common-rdma-transfer-agent-lifetime)
+gtest_discover_tests(rdma_transfer_agent_lifetime_test TEST_PREFIX "Unit_ChronoCommon_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(rdma_transfer_agent_lifetime_test DESTINATION tests)
+endif()
+
 # StoryChunkExtractorCSV (GTest): an empty window leaves no file behind
 add_executable(chunk_extractor_csv_test
     chrono_common_chunk_extractor_csv_test.cpp
@@ -251,6 +280,36 @@ set_target_properties(chunk_extractor_csv_test PROPERTIES OUTPUT_NAME chronolog-
 gtest_discover_tests(chunk_extractor_csv_test TEST_PREFIX "Unit_ChronoCommon_")
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chunk_extractor_csv_test DESTINATION tests)
+endif()
+
+add_executable(extraction_lifecycle_test extraction_lifecycle_test.cpp)
+target_link_libraries(extraction_lifecycle_test PRIVATE GTest::gtest_main chrono_common chronolog_client thallium)
+gtest_discover_tests(extraction_lifecycle_test TEST_PREFIX "Unit_ChronoCommon_" PROPERTIES TIMEOUT 15)
+
+# Pure managed-stop proof binding; no native initialization or daemon retirement.
+add_executable(managed_stop_barrier_test managed_stop_barrier_test.cpp)
+target_include_directories(managed_stop_barrier_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(managed_stop_barrier_test PRIVATE GTest::gtest_main chrono_common chronolog_client)
+gtest_discover_tests(managed_stop_barrier_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(managed_stop_barrier_test DESTINATION tests)
+endif()
+
+# Daemon status publication on owned runtime work; std-only, no native runtime.
+add_executable(lifecycle_publisher_test lifecycle_publisher_test.cpp)
+target_include_directories(lifecycle_publisher_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(lifecycle_publisher_test PRIVATE GTest::gtest_main chrono_common chronolog_client)
+gtest_discover_tests(lifecycle_publisher_test TEST_PREFIX "Unit_ChronoCommon_" PROPERTIES TIMEOUT 30)
+
+add_executable(extraction_configuration_ownership_test extraction_configuration_ownership_test.cpp)
+target_include_directories(extraction_configuration_ownership_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(extraction_configuration_ownership_test PRIVATE GTest::gtest_main chrono_common chronolog_client)
+gtest_discover_tests(extraction_configuration_ownership_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(extraction_configuration_ownership_test DESTINATION tests)
 endif()
 
 # Crc32c (GTest): the SSE4.2 path and the boost fallback agree

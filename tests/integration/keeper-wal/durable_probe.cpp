@@ -77,7 +77,8 @@
 #include <thallium.hpp>
 
 #include <ClientConfiguration.h>
-#include <KeeperRecordingClient.h>
+#include <chronolog_types.h>
+#include <thallium/serialization/stl/string.hpp>
 #include <ServiceId.h>
 #include <StoryIdOf.h>
 #include <chronolog_client.h>
@@ -147,6 +148,27 @@ int write_loop(chronolog::StoryHandle& story_handle,
     return exit_code;
 }
 
+// One record_event_durable to the keeper with a deadline of timeout_ms,
+// through a plain thallium engine: these modes test the keeper, not the
+// client library. No answer is CL_ERR_DURABILITY_UNKNOWN.
+int send_durable(tl::remote_procedure& rpc,
+                 tl::provider_handle const& keeper,
+                 std::string const& chronicle,
+                 std::string const& story,
+                 chronolog::LogEvent const& event,
+                 long timeout_ms)
+{
+    try
+    {
+        int code = rpc.on(keeper).timed(std::chrono::milliseconds(timeout_ms), chronicle, story, event);
+        return code;
+    }
+    catch(tl::exception const&)
+    {
+        return chronolog::CL_ERR_DURABILITY_UNKNOWN;
+    }
+}
+
 // Resend the identities in `path` to one keeper. Each line is
 // "<time> <client id> <index>". The record matches a --write durable event
 // with that index, and the story id is the one the keeper checks the names
@@ -173,14 +195,8 @@ int retry_identities(std::string const& path,
     }
 
     tl::engine engine(protocol + "://" + ip, THALLIUM_CLIENT_MODE, true, 1);
-    chronolog::ServiceId const service(protocol, ip, port, provider);
-    std::unique_ptr<chronolog::KeeperRecordingClient> keeper(
-            chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(engine, service));
-    if(keeper == nullptr)
-    {
-        std::cout << "RETRY_OK 0 0" << std::endl;
-        return EXIT_FAILURE;
-    }
+    tl::remote_procedure rpc = engine.define("record_event_durable");
+    tl::provider_handle keeper(engine.lookup(protocol + "://" + ip + ":" + std::to_string(port)), provider);
 
     chronolog::StoryId const story_id = chronolog::storyIdOf(chronicle, story);
     long ok = 0;
@@ -207,13 +223,7 @@ int retry_identities(std::string const& path,
                                   static_cast<chronolog::ClientId>(client),
                                   static_cast<uint32_t>(index),
                                   "durable event " + std::to_string(index));
-        int keeper_code = chronolog::CL_ERR_UNKNOWN;
-        chronolog::DurableSendOutcome const outcome =
-                keeper->send_durable_event_msg(chronicle, story, event, 10000, keeper_code);
-        if(outcome != chronolog::DurableSendOutcome::Answered)
-        {
-            keeper_code = chronolog::CL_ERR_DURABILITY_UNKNOWN;
-        }
+        int const keeper_code = send_durable(rpc, keeper, chronicle, story, event, 10000);
         if(keeper_code == chronolog::CL_SUCCESS)
         {
             ++ok;
@@ -241,26 +251,14 @@ int direct_write(std::string const& chronicle,
         return EXIT_FAILURE;
     }
     tl::engine engine(protocol + "://" + ip, THALLIUM_CLIENT_MODE, true, 1);
-    chronolog::ServiceId const service(protocol, ip, port, provider);
-    std::unique_ptr<chronolog::KeeperRecordingClient> keeper(
-            chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(engine, service));
-    if(keeper == nullptr)
-    {
-        std::cout << "DIRECT CL_ERR_UNKNOWN 0 0 0" << std::endl;
-        return EXIT_FAILURE;
-    }
+    tl::remote_procedure rpc = engine.define("record_event_durable");
+    tl::provider_handle keeper(engine.lookup(protocol + "://" + ip + ":" + std::to_string(port)), provider);
     uint64_t const time = wall_clock_ns();
     chronolog::LogEvent event(chronolog::storyIdOf(chronicle, story), time, 1, 1, "direct event");
-    int keeper_code = chronolog::CL_ERR_UNKNOWN;
     auto const start = std::chrono::steady_clock::now();
-    chronolog::DurableSendOutcome const outcome =
-            keeper->send_durable_event_msg(chronicle, story, event, 2000, keeper_code);
+    int const keeper_code = send_durable(rpc, keeper, chronicle, story, event, 2000);
     auto const took =
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
-    if(outcome != chronolog::DurableSendOutcome::Answered)
-    {
-        keeper_code = chronolog::CL_ERR_DURABILITY_UNKNOWN;
-    }
     std::cout << "DIRECT " << chronolog::to_string_client(keeper_code) << " " << time << " 1 1" << std::endl;
     std::cout << "DIRECT_MS " << took << std::endl;
     return EXIT_SUCCESS;

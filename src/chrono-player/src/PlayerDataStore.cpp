@@ -1,3 +1,4 @@
+#include <private/NativeThreadLabel.h>
 #include <unistd.h>
 #include <map>
 #include <mutex>
@@ -20,10 +21,10 @@ void chronolog::PlayerDataStore::collectIngestedEvents()
 {
     LOG_TRACE("[PlayerDataStore] Initiating collection of ingested story chunks. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
-              state,
+              state.load(),
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
     theIngestionQueue.drainOrphanChunks();
 
     std::lock_guard storeLock(dataStoreMutex);
@@ -39,10 +40,10 @@ void chronolog::PlayerDataStore::extractDecayedStoryChunks()
 {
     LOG_TRACE("[PlayerDataStore] Discarding decayed story chunks. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
-              state,
+              state.load(),
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
 
     uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
     std::vector<chl::StoryChunk*> extracted_story_chunks;
@@ -69,10 +70,10 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
 {
     LOG_TRACE("[PlayerDataStore] Initiating retirement of decayed pipelines. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
-              state,
+              state.load(),
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
 
 
     std::vector<chl::StoryChunk*> extracted_story_chunks;
@@ -120,10 +121,10 @@ void chronolog::PlayerDataStore::retireDecayedPipelines()
 
     LOG_TRACE("[PlayerDataStore] Completed retirement of decayed pipelines. Current state={}, Active "
               "StoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
-              state,
+              state.load(),
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
 }
 
 void chronolog::PlayerDataStore::dataCollectionTask()
@@ -134,13 +135,13 @@ void chronolog::PlayerDataStore::dataCollectionTask()
     tl::xstream es = tl::xstream::self();
     LOG_DEBUG("[PlayerDataStore] Initiating DataCollectionTask. ESrank={}, ThreadID={}",
               es.get_rank(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
 
     while(!is_shutting_down())
     {
         LOG_TRACE("[PlayerDataStore] Running DataCollection iteration. ESrank={}, ThreadID={}",
                   es.get_rank(),
-                  tl::thread::self_id());
+                  chronolog::rpc::nativeThreadLabel());
         for(int i = 0; i < 1; ++i)
         {
             collectIngestedEvents();
@@ -149,7 +150,7 @@ void chronolog::PlayerDataStore::dataCollectionTask()
         extractDecayedStoryChunks();
         retireDecayedPipelines();
     }
-    LOG_DEBUG("[PlayerDataStore] Exiting DataCollectionTask thread {}", tl::thread::self_id());
+    LOG_DEBUG("[PlayerDataStore] Exiting DataCollectionTask thread {}", chronolog::rpc::nativeThreadLabel());
 }
 
 ////////////////////////
@@ -164,13 +165,14 @@ void chronolog::PlayerDataStore::startDataCollection(int stream_count)
 
     LOG_INFO("[PlayerDataStore] Starting data collection. StreamCount={}, ThreadID={}",
              stream_count,
-             tl::thread::self_id());
+             chronolog::rpc::nativeThreadLabel());
     state = RUNNING;
 
     for(int i = 0; i < stream_count; ++i)
     {
         tl::managed<tl::xstream> es = tl::xstream::create();
         dataStoreStreams.push_back(std::move(es));
+        nativeHandles_.fetch_add(1, std::memory_order_release);
     }
 
     for(int i = 0; i < 2 * stream_count; ++i)
@@ -178,76 +180,86 @@ void chronolog::PlayerDataStore::startDataCollection(int stream_count)
         tl::managed<tl::thread> th =
                 dataStoreStreams[i % (dataStoreStreams.size())]->make_thread([p = this]() { p->dataCollectionTask(); });
         dataStoreThreads.push_back(std::move(th));
+        nativeHandles_.fetch_add(1, std::memory_order_release);
     }
     LOG_INFO("[PlayerDataStore] Data collection started successfully. Stream count={}, ThreadID={}",
              stream_count,
-             tl::thread::self_id());
+             chronolog::rpc::nativeThreadLabel());
 }
 //////////////////////////////
 
 void chronolog::PlayerDataStore::shutdownDataCollection()
 {
-    if(is_shutting_down())
-    {
-        LOG_INFO("[PlayerDataStore] Data collection is already shutting down. Ignoring additional shutdown request.");
-        return;
-    }
-
-    // switch the state to shuttingDown
-    std::lock_guard storeLock(dataStoreStateMutex);
-    state = SHUTTING_DOWN;
-
-    LOG_INFO("[PlayerDataStore] Initiating shutdown of DataCollection. CurrentState={}, Active StoryPipelines={}, "
-             "PipelinesWaitingForExit={}",
-             state,
-             theMapOfStoryPipelines.size(),
-             pipelinesWaitingForExit.size());
-
-    // Join threads & execution streams while holding stateMutex
-
-    for(auto& th: dataStoreThreads) { th->join(); }
-    LOG_INFO("[PlayerDataStore] All data collection threads have been joined.");
-
-    for(auto& es: dataStoreStreams) { es->join(); }
-    LOG_INFO("[PlayerDataStore] All data collection streams have been joined.");
-
-    // Collect any remaining ingested events and retire the StoryPipelines
-    collectIngestedEvents();
-
-    if(!theMapOfStoryPipelines.empty())
-    {
-        std::lock_guard storeLock(dataStoreMutex);
-
-        chl::StoryPipeline* pipeline = nullptr;
-        std::vector<chl::StoryChunk*> remaining_chunks;
-        for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
-            ++pipeline_iter)
-        {
-            pipeline = (*pipeline_iter).second;
-            theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
-            pipeline->finalize(remaining_chunks);
-            delete pipeline;
-        }
-
-        pipelinesWaitingForExit.clear();
-        theMapOfStoryPipelines.clear();
-
-        for(auto& chunk: remaining_chunks)
-        {
-            if(chunk != nullptr)
+    collectionJoin.finish(
+            [this]
             {
-                delete chunk;
-            }
-        }
+                // switch the state to shuttingDown
+                {
+                    std::lock_guard stateLock(dataStoreStateMutex);
+                    state = SHUTTING_DOWN;
+                }
 
-        LOG_INFO("[PlayerDataStore] Completed retirement of pipelines. Current state={}, MapOfStoryPipelines={}, "
-                 "pipelinesWaitingForExit={}",
-                 state,
-                 theMapOfStoryPipelines.size(),
-                 pipelinesWaitingForExit.size());
-    }
+                LOG_INFO("[PlayerDataStore] Initiating shutdown of DataCollection. CurrentState={}, Active "
+                         "StoryPipelines={}, "
+                         "PipelinesWaitingForExit={}",
+                         state.load(),
+                         theMapOfStoryPipelines.size(),
+                         pipelinesWaitingForExit.size());
 
-    LOG_INFO("[PlayerDataStore] DataCollection shutdown completed.");
+                // Join threads & execution streams after publishing state under a short lock
+
+                for(auto& th: dataStoreThreads) { th->join(); }
+                auto dataStoreThreadsCount = dataStoreThreads.size();
+                dataStoreThreads.clear();
+                nativeHandles_.fetch_sub(dataStoreThreadsCount, std::memory_order_release);
+                LOG_INFO("[PlayerDataStore] All data collection threads have been joined.");
+
+                for(auto& es: dataStoreStreams) { es->join(); }
+                auto dataStoreStreamsCount = dataStoreStreams.size();
+                dataStoreStreams.clear();
+                nativeHandles_.fetch_sub(dataStoreStreamsCount, std::memory_order_release);
+                LOG_INFO("[PlayerDataStore] All data collection streams have been joined.");
+
+                // Collect any remaining ingested events and retire the StoryPipelines
+                collectIngestedEvents();
+
+                if(!theMapOfStoryPipelines.empty())
+                {
+                    std::lock_guard storeLock(dataStoreMutex);
+
+                    chl::StoryPipeline* pipeline = nullptr;
+                    std::vector<chl::StoryChunk*> remaining_chunks;
+                    for(auto pipeline_iter = theMapOfStoryPipelines.begin();
+                        pipeline_iter != theMapOfStoryPipelines.end();
+                        ++pipeline_iter)
+                    {
+                        pipeline = (*pipeline_iter).second;
+                        theIngestionQueue.removeStoryIngestionHandle(pipeline->getStoryId());
+                        pipeline->finalize(remaining_chunks);
+                        delete pipeline;
+                    }
+
+                    pipelinesWaitingForExit.clear();
+                    theMapOfStoryPipelines.clear();
+
+                    for(auto& chunk: remaining_chunks)
+                    {
+                        if(chunk != nullptr)
+                        {
+                            delete chunk;
+                        }
+                    }
+
+                    LOG_INFO("[PlayerDataStore] Completed retirement of pipelines. Current state={}, "
+                             "MapOfStoryPipelines={}, "
+                             "pipelinesWaitingForExit={}",
+                             state.load(),
+                             theMapOfStoryPipelines.size(),
+                             pipelinesWaitingForExit.size());
+                }
+
+                LOG_INFO("[PlayerDataStore] DataCollection shutdown completed.");
+            });
 }
 
 ///////////////////////

@@ -1,0 +1,311 @@
+#ifndef CHRONOLOG_VISOR_ADMIN_RUNTIME_H
+#define CHRONOLOG_VISOR_ADMIN_RUNTIME_H
+#include <RpcRuntime.h>
+#include <private/RpcProviderRegistration.h>
+#include <private/RpcCallState.h>
+#include <array>
+#include <chronolog_types.h>
+#include <RpcPolicy.h>
+#include <thallium.hpp>
+#include <atomic>
+#include <chrono>
+#include <cstddef>
+#include <functional>
+#include <map>
+#include <functional>
+#include <memory>
+#include <vector>
+#include <string>
+#include <ServiceId.h>
+#include <KeeperIdCard.h>
+namespace chronolog
+{
+class KeeperRegistry;
+enum class AdminAction;
+class DataStoreAdminClient;
+class AdminLookup
+{
+public:
+    virtual ~AdminLookup() = default;
+    virtual thallium::endpoint resolve(thallium::engine&, std::string const&) = 0;
+};
+struct AdminObservation
+{
+    std::atomic<unsigned> shutdownNoReplyRunReturns{0};
+    std::atomic<int> shutdownExceptionKind{0};
+    std::atomic<int> nativeShutdownError{0};
+};
+// Slots an acquire of a story no client holds needs at once from the visor's
+// runtime: the client's own request, then one start each for the grapher, the
+// group's keepers and the player, all reserved before the first is sent.
+inline std::size_t storyStartSlots(std::size_t keepers) { return keepers + 3; }
+
+// Says when a refused call should be logged: at most once a second, with the
+// number refused since the last line, so a flood of refusals does not flood
+// the log.
+class RefusalLog
+{
+    std::atomic<int64_t> lastNs_{0};
+    std::atomic<uint64_t> count_{0};
+
+public:
+    // Counts one refusal; returns the number to report when a line is due now,
+    // else 0.
+    uint64_t note()
+    {
+        count_.fetch_add(1, std::memory_order_relaxed);
+        auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                           std::chrono::steady_clock::now().time_since_epoch())
+                           .count();
+        auto last = lastNs_.load(std::memory_order_relaxed);
+        if(last != 0 && now - last < 1000000000)
+            return 0;
+        if(!lastNs_.compare_exchange_strong(last, now, std::memory_order_relaxed))
+            return 0;
+        return count_.exchange(0, std::memory_order_relaxed);
+    }
+};
+
+// Legacy fixtures own their existing runtime here. The native daemon binds
+// weakly to its one externally retained C32; no owner/Core backlink cycle.
+class VisorControlRuntime
+{
+    std::shared_ptr<rpc::RpcRuntime> legacy_;
+    std::weak_ptr<rpc::RpcRuntime> actual_;
+
+public:
+    VisorControlRuntime(std::size_t capacity, std::shared_ptr<rpc::RpcRuntime> const& actual)
+    {
+        if(actual)
+            actual_ = actual;
+        else
+        {
+            legacy_ = std::make_shared<rpc::RpcRuntime>(capacity);
+            actual_ = legacy_;
+        }
+    }
+    rpc::RpcReservation reserve(rpc::RpcDeadline const& deadline)
+    {
+        auto runtime = actual_.lock();
+        return runtime ? runtime->reserve(deadline) : rpc::RpcReservation{};
+    }
+    std::size_t capacity() const
+    {
+        auto runtime = actual_.lock();
+        return runtime ? runtime->capacity() : 0;
+    }
+    template <class Reply>
+    rpc::RpcPending<Reply> submit(rpc::RpcReservation&& token, std::shared_ptr<rpc::OwnedRpcWork<Reply>> work)
+    {
+        return rpc::RpcRuntime::submitReserved<Reply>(std::move(token), std::move(work));
+    }
+    template <class Reply>
+    rpc::RpcResult<Reply> invoke(rpc::RpcReservation&& token, std::shared_ptr<rpc::OwnedRpcWork<Reply>> work)
+    {
+        return submit<Reply>(std::move(token), std::move(work)).wait();
+    }
+};
+struct VisorAdminRuntime
+{
+    explicit VisorAdminRuntime(RpcTimeoutPolicy const& policy,
+                               std::size_t capacity,
+                               std::shared_ptr<AdminLookup> lookup = {},
+                               std::shared_ptr<rpc::RpcRuntime> actual = {});
+    const RpcTimeoutPolicy policy;
+    VisorControlRuntime runtime;
+    const std::shared_ptr<AdminLookup> lookup;
+    const std::shared_ptr<AdminObservation> observation = std::make_shared<AdminObservation>();
+    std::shared_ptr<thallium::engine> engine;
+    std::array<thallium::remote_procedure, 7> procedures;
+    void initializeRpcDefinitions();
+    void releaseNativeDescriptors(); // Only after the actual MID's native fence.
+    int provision(AdminAction, uint16_t provider, rpc::RpcDeadline const&);
+
+private:
+    std::unique_ptr<rpc::RpcProviderRegistration> registrations_;
+};
+enum class AdminAction
+{
+    Start,
+    StartPlayer,
+    Stop,
+    DestroyStory,
+    DestroyChronicle,
+    Shutdown,
+    Available
+};
+struct AdminArguments
+{
+    AdminAction action;
+    std::string chronicle, story;
+    StoryId id = 0;
+    uint64_t start = 0;
+    std::vector<ServiceId> keepers;
+};
+struct AdminCompletion
+{
+    std::atomic<bool> done{false};
+    int status = CL_ERR_OUTCOME_UNCONFIRMED;
+    bool confirmed = false;
+    bool dispatched = false;
+    // Called once on the worker after done is set, if installed before the
+    // work is submitted.
+    std::function<void(AdminCompletion const&)> finished;
+};
+class AdminWork final: public rpc::OwnedRpcWork<int>
+{
+public:
+    AdminWork(std::shared_ptr<DataStoreAdminClient>,
+              AdminArguments,
+              std::shared_ptr<AdminCompletion>,
+              std::shared_ptr<KeeperRegistry>);
+    ~AdminWork() override;
+    rpc::RpcResult<int> run(rpc::OperationContext&) override;
+
+private:
+    std::shared_ptr<DataStoreAdminClient> client_;
+    AdminArguments arguments_;
+    std::shared_ptr<AdminCompletion> completion_;
+    std::shared_ptr<KeeperRegistry> registry_;
+    rpc::RpcCallState native_;
+    bool entered_ = false;
+};
+struct StoryRecording
+{
+    enum Phase
+    {
+        Starting,
+        Active,
+        Closing,
+        Unresolved
+    };
+    Phase phase = Starting;
+    std::string chronicle, story;
+    StoryId id;
+    uint64_t generation;
+    RecordingGroupId group = 0;
+    std::vector<KeeperIdCard> keepers, confirmedKeepers;
+    // clients[i] was sent starts[i]. The first originalStarts come from the
+    // first acquire: the grapher, the keepers, then the player. Those after
+    // went to keepers that registered while the story was active.
+    std::vector<std::shared_ptr<DataStoreAdminClient>> clients;
+    std::vector<std::shared_ptr<AdminCompletion>> starts;
+    std::size_t originalStarts = 0;
+    ServiceId player;
+    // Closing: the clients a stop was sent to. A stop that one of them did not
+    // confirm leaves the recording Closing; the next acquire or release sends
+    // it again to the same clients (stop is idempotent on each), so a
+    // component that was only paused cannot hold the story closed for good.
+    std::vector<std::size_t> stopTargets;
+    // A placeholder for a DestroyStory, not a recording: it keeps starts out
+    // while the graphers delete the story. One left by a destroy that a
+    // grapher did not confirm stays, with destroyInFlight false, until the
+    // next destroy, create or acquire of the name sends the destroy again.
+    bool destroy = false;
+    bool destroyInFlight = false;
+};
+
+// The recordings a keeper of `group` must start when it registers: the active
+// stories of that group. A keeper that registers again after a restart has no
+// pipeline for the stories clients still hold, and an acquire sends
+// start_story_recording only for a story's first holder. A story still
+// starting, closing or unresolved is left out.
+inline std::vector<std::shared_ptr<StoryRecording>>
+storiesToStartOnRegistration(std::map<StoryId, std::shared_ptr<StoryRecording>> const& active, RecordingGroupId group)
+{
+    std::vector<std::shared_ptr<StoryRecording>> stories;
+    for(auto const& [id, recording]: active)
+        if(recording && recording->phase == StoryRecording::Active && recording->group == group)
+            stories.push_back(recording);
+    return stories;
+}
+
+// Which of a story's starts its stop goes to, by index into its clients. Every
+// start must have settled first, so a stop reaches each keeper after the
+// start. A start from the first acquire gets a stop if it succeeded, or if it
+// was sent and got no answer: it may have run. One that failed with an answer,
+// or was never sent, gets none. A start sent to a keeper that registered later
+// gets a stop whatever its answer was: a failed call may still have run on the
+// keeper, and a keeper that never had the story ignores the stop.
+struct StoryStopTargets
+{
+    enum State
+    {
+        Ready,
+        Pending, // a start has not settled yet
+    };
+    State state = Ready;
+    std::vector<std::size_t> targets;
+};
+inline StoryStopTargets storyStopTargets(StoryRecording const& recording)
+{
+    StoryStopTargets result;
+    for(std::size_t i = 0; i < recording.starts.size(); ++i)
+    {
+        auto const& start = *recording.starts[i];
+        if(!start.done.load(std::memory_order_acquire))
+            return {StoryStopTargets::Pending, {}};
+        // A later start, a succeeded one, and a first-acquire start that was
+        // sent but never answered may have run, so each gets a stop; stop is
+        // idempotent, and a component that never had the story ignores it. A
+        // start that timed out gets no answer later, so waiting for one would
+        // keep the story from ever being released.
+        if(i >= recording.originalStarts || (start.confirmed && start.status == CL_SUCCESS) ||
+           (!start.confirmed && start.dispatched))
+            result.targets.push_back(i);
+    }
+    return result;
+}
+// An acquire whose starts did not all confirm in time leaves the story
+// Unresolved. A start that timed out has returned without an answer, so none
+// will come; the next acquire or release settles the story from what is
+// known. If every start was confirmed as succeeded, the story is Active with
+// its keepers. Otherwise every component whose start succeeded or may have
+// run gets a stop, as a keeper that registered later does: stop is
+// idempotent, and a component that never had the story ignores it. A start
+// whose work has not returned yet leaves the story Unresolved.
+struct UnresolvedStart
+{
+    enum State
+    {
+        Pending, // a start's work has not returned yet
+        Active,  // every start was confirmed as succeeded
+        Stop     // stop `targets`, then the story can start anew
+    };
+    State state = Pending;
+    std::vector<std::size_t> targets;
+    std::vector<KeeperIdCard> keepers;
+};
+inline UnresolvedStart settleUnresolvedStart(StoryRecording const& recording)
+{
+    UnresolvedStart result;
+    bool allSucceeded = true;
+    for(std::size_t i = 0; i < recording.starts.size(); ++i)
+    {
+        auto const& start = *recording.starts[i];
+        if(!start.done.load(std::memory_order_acquire))
+            return {};
+        bool succeeded = start.confirmed && start.status == CL_SUCCESS;
+        allSucceeded &= succeeded;
+        if(succeeded || (!start.confirmed && start.dispatched))
+            result.targets.push_back(i);
+        if(succeeded && i >= 1 && i <= recording.keepers.size())
+            result.keepers.push_back(recording.keepers[i - 1]);
+    }
+    // With a player, its start carried the roster fixed when the acquire's
+    // wait ended (confirmedKeepers), and every start succeeded, so that roster
+    // is what the player fetches from. Keep it: a keeper that confirmed later
+    // would get writes the player never fetches.
+    if(allSucceeded && recording.clients.size() > recording.keepers.size() + 1)
+        result.keepers = recording.confirmedKeepers;
+    if(allSucceeded && !result.keepers.empty())
+    {
+        result.state = UnresolvedStart::Active;
+        result.targets.clear();
+    }
+    else
+        result.state = UnresolvedStart::Stop;
+    return result;
+}
+} // namespace chronolog
+#endif

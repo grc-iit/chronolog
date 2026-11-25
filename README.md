@@ -1,6 +1,6 @@
 > [!IMPORTANT]
-> **ChronoLog v3.5.0 is now available.**
-> The dependency stack moves to Spack v1.2.2, with Mercury 2.4.1, Margo 0.24.4 and thallium 0.17.0. 3.5.0 clients and servers cannot exchange RPCs with 3.4.0 or older ones, so upgrade every component and client together. It also fixes a replay from time 0 that timed out after 180 s and new story acquires that failed once a keeper had left.
+> **ChronoLog v3.6.0 is now available.**
+> Every RPC a client or a service makes now has a deadline taken from its conf, so a call to a dead or stopped component returns an error instead of hanging. The default transport is now `ofi+tcp`, and MPICH is built without Argobots, so rebuild MPI applications against the new environment. Mixed versions are not supported: run every component and client at 3.6.0.
 > [Releases on chronolog.dev](https://www.chronolog.dev/releases) · [Release notes](https://github.com/grc-iit/ChronoLog/releases/latest) · [All releases on GitHub](https://github.com/grc-iit/ChronoLog/releases) · [Documentation](https://www.chronolog.dev/docs)
 
 <p align="center">
@@ -85,13 +85,13 @@ Best for trying ChronoLog quickly on a Linux x86_64 host.
 Download the tarball:
 
 ```bash
-wget https://github.com/grc-iit/ChronoLog/releases/download/v3.5.0/chronolog-3.5.0-linux-x86_64.tar.gz
+wget https://github.com/grc-iit/ChronoLog/releases/download/v3.6.0/chronolog-3.6.0-linux-x86_64.tar.gz
 ```
 
 Extract it:
 
 ```bash
-tar -xzf chronolog-3.5.0-linux-x86_64.tar.gz
+tar -xzf chronolog-3.6.0-linux-x86_64.tar.gz
 ```
 
 Full guide → [Quick Start: Release Archive](https://www.chronolog.dev/docs/getting-started/quick-start)
@@ -104,7 +104,7 @@ Full guide → [Quick Start: Release Archive](https://www.chronolog.dev/docs/get
 System-wide install via `apt` for Debian, Ubuntu, and compatible distributions.
 
 ```bash
-sudo apt install ./chronolog-3.5.0-linux-x86_64.deb
+sudo apt install ./chronolog-3.6.0-linux-x86_64.deb
 ```
 
 Full guide → [Quick Start: DEB Package](https://www.chronolog.dev/docs/getting-started/quick-start)
@@ -117,7 +117,7 @@ Full guide → [Quick Start: DEB Package](https://www.chronolog.dev/docs/getting
 System-wide install via `dnf` (or `yum`) for RHEL-family distributions.
 
 ```bash
-sudo dnf install ./chronolog-3.5.0-linux-x86_64.rpm
+sudo dnf install ./chronolog-3.6.0-linux-x86_64.rpm
 ```
 
 Full guide → [Quick Start: RPM Package](https://www.chronolog.dev/docs/getting-started/quick-start)

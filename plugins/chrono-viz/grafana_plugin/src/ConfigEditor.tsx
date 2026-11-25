@@ -171,7 +171,7 @@ python chronolog_service.py  # optional: --conf /path/to/client_conf.json`}
             <strong>2. Configure environment variables (optional):</strong>
           </p>
           <pre style={{ backgroundColor: '#2d2d2d', padding: '8px', borderRadius: '4px', overflow: 'auto' }}>
-            {`export CHRONOLOG_PROTOCOL=ofi+sockets
+            {`export CHRONOLOG_PROTOCOL=ofi+tcp
 export CHRONOLOG_PORTAL_IP=127.0.0.1
 export CHRONOLOG_PORTAL_PORT=5555
 export CHRONOLOG_PORTAL_PROVIDER_ID=55

@@ -1,7 +1,9 @@
+#include <algorithm>
 #include <chrono>
 #include <map>
 #include <mutex>
 #include <utility>
+#include <thread>
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
@@ -13,24 +15,32 @@
 namespace tl = thallium;
 namespace chl = chronolog;
 
-chronolog::PlaybackService::PlaybackService(tl::engine& tl_engine,
+chronolog::PlaybackService::PlaybackService(std::shared_ptr<PlaybackRpcOwner> const& owner,
                                             uint16_t service_provider_id,
                                             chronolog::PlayerDataStore& activeDataStore,
-                                            chronolog::ArchiveReadingRequestQueue& archive_reading_queue)
-    : tl::provider<PlaybackService>(tl_engine, service_provider_id)
-    , playbackEngine(tl_engine)
+                                            chronolog::ArchiveReadingRequestQueue& archive_reading_queue,
+                                            RegistrationObserver observer)
+    : tl::provider<PlaybackService>(*owner->engine, service_provider_id)
+    , owner_(owner)
+    , playbackEngine(*owner->engine)
     , theActiveDataStore(activeDataStore)
     , theArchiveReadingRequestQueue(archive_reading_queue)
+    , registrationObserver_(std::move(observer))
+{}
+
+void chronolog::PlaybackService::registerProcedures()
 {
+    if(registrationObserver_)
+        registrationObserver_(*this, false);
     define("playback_service_available", &PlaybackService::playback_service_available);
+    if(registrationObserver_)
+        registrationObserver_(*this, true);
     define("story_playback_request", &PlaybackService::story_playback_request);
 
-    //set up callback for the case when the engine is being finalized while this provider is still alive
-    playbackEngine.push_finalize_callback(this, [p = this]() { delete p; });
 
     std::stringstream ss;
     ss << get_engine().self();
-    LOG_INFO("[PlaybackService] Constructed at {}. ProviderID={}", ss.str(), service_provider_id);
+    LOG_INFO("[PlaybackService] Constructed at {}. ProviderID={}", ss.str(), get_provider_id());
 }
 
 ////////////////////
@@ -52,9 +62,6 @@ chronolog::PlaybackService::~PlaybackService()
         delete agent.second;
     }
     responseSenders.clear();
-
-    //remove provider finalization callback from the engine's list
-    playbackEngine.pop_finalize_callback(this);
 }
 
 //////////////////
@@ -70,7 +77,10 @@ chronolog::KeeperHotFetchClient* chronolog::PlaybackService::getHotFetchClient(c
         }
     }
     // engine lookup happens outside the cache mutex
-    KeeperHotFetchClient* client = KeeperHotFetchClient::CreateKeeperHotFetchClient(playbackEngine, keeper_service_id);
+    KeeperHotFetchClient* client = KeeperHotFetchClient::CreateKeeperHotFetchClient(
+            owner_.lock(),
+            keeper_service_id,
+            std::chrono::milliseconds(owner_.lock()->policy.attempt_ms));
     if(client == nullptr)
     {
         return nullptr;
@@ -87,193 +97,336 @@ chronolog::KeeperHotFetchClient* chronolog::PlaybackService::getHotFetchClient(c
 
 //////////////////
 
-void chronolog::PlaybackService::playback_service_available(tl::request const& request) { request.respond(1); }
 
-/////////
-
-void chronolog::PlaybackService::story_playback_request(tl::request const& request,
-                                                        chl::ServiceId const& receiver_service_id,
-                                                        uint32_t query_id,
-                                                        chl::StoryId const& story_id,
-                                                        chl::ChronicleName const& chronicle_name,
-                                                        chl::StoryName const& story_name,
-                                                        chl::chrono_time const& requested_start_time,
-                                                        chl::chrono_time const& end_time)
+namespace chronolog
 {
-    LOG_INFO("[PlaybackService] story_playback_request for receiver_service {} query_id {} story {} {}-{}",
-             chl::to_string(receiver_service_id),
-             query_id,
-             story_id,
-             chronicle_name,
-             story_name);
-
-    // a replay that starts at 0 starts at the earliest event time; see replayStartTime
-    chl::chrono_time const start_time = chl::replayStartTime(requested_start_time);
-
-    //ChronoPlayer is running and able to respond
-
-    chl::QueryResponseAgent* queryResponseSender = nullptr;
-    // if we already have QueryResponseAgent for this receiver,
-    // use it or add one otherwise
+class PlaybackQueryWork final: public rpc::OwnedRpcWork<int>
+{
+public:
+    PlaybackQueryWork(std::shared_ptr<PlaybackRpcOwner> owner,
+                      PlaybackService* service,
+                      rpc::RpcReservation child,
+                      rpc::BulkPermits::Permit queryPermit,
+                      rpc::BulkPermits::Permit sourcePermit,
+                      tl::request const& request,
+                      ServiceId receiver,
+                      uint32_t query,
+                      StoryId story,
+                      std::string chronicle,
+                      std::string name,
+                      uint64_t start,
+                      uint64_t end,
+                      rpc::RpcDeadline ackDeadline)
+        : queryPermit_(std::move(queryPermit))
+        , sourcePermit_(std::move(sourcePermit))
+        , owner_(std::move(owner))
+        , service_(service)
+        , child_(std::move(child))
+        , receiver_(std::move(receiver))
+        , query_(query)
+        , story_(story)
+        , chronicle_(std::move(chronicle))
+        , name_(std::move(name))
+        , start_(start)
+        , end_(end)
+        , ackDeadline_(ackDeadline)
+        , request_(request)
+    {}
+    rpc::RpcResult<int> run(rpc::OperationContext& operation) override
     {
-        std::lock_guard<std::mutex> lock(playbackServiceMutex);
-
-        auto findSenderIter = responseSenders.find(receiver_service_id.get_service_endpoint());
-        if(findSenderIter != responseSenders.end())
-        {
-            queryResponseSender = (*findSenderIter).second;
-        }
-        else
-        {
-            //create RDMA client of the requesting service
-            // using the service tl_engine and service_id provided in the request
-            queryResponseSender =
-                    chl::QueryResponseAgent::CreateQueryResponseAgent(playbackEngine, receiver_service_id);
-            if(queryResponseSender == nullptr)
-            {
-                request.respond(0);
-                return;
-            }
-
-            responseSenders.insert(std::pair<chl::service_endpoint, chl::QueryResponseAgent*>(
-                    receiver_service_id.get_service_endpoint(),
-                    queryResponseSender));
-            queryResponseSender->startResponseThreads(1);
-        }
-    }
-
-    // The hot portion of the response comes straight from the story's keepers
-    // (on-demand pull over the roster the visor delivered at story start),
-    // and splitHotRange decides where the archive portion ends; see
-    // HotRangeSplit.h. No keepers at all -> archive-only (degraded, correct
-    // for persisted data).
-    // TODO(replay paging): a keeper stops at this many events and sets
-    // truncated, and the reply is then marked incomplete so the client gets
-    // CL_ERR_PARTIAL_RESULT -- honest, but short. Fetch again from the last
-    // EventSequence returned until the range is exhausted, so a range holding
-    // more than the cap on one keeper comes back complete instead. The response
-    // already carries what paging needs (truncated, and the events in order);
-    // what is missing is the loop here and a keeper-side start-after argument.
-    constexpr uint64_t kHotFetchMaxEvents = 262144;
-
-    std::vector<chl::ServiceId> story_keepers = theActiveDataStore.getStoryKeepers(story_id);
-
-    bool all_keepers_answered = true;
-    bool any_truncated = false;
-
-    // Issue every keeper's fetch before waiting on any of them: a keeper that
-    // never answers then costs this query one deadline in total, not one each.
-    std::vector<std::pair<chl::KeeperHotFetchClient*, tl::async_response>> pending_fetches;
-    pending_fetches.reserve(story_keepers.size());
-    for(auto const& keeper_service_id: story_keepers)
-    {
-        chl::KeeperHotFetchClient* fetch_client = getHotFetchClient(keeper_service_id);
-        if(fetch_client == nullptr)
-        {
-            // unreachable keeper: the split is left to the keepers that answer,
-            // and the reply cannot claim to hold what this one still has
-            all_keepers_answered = false;
-            continue;
-        }
+        if(ackDeadline_.expired() || !operation.tryBeginDispatch())
+            return {CL_ERR_DEADLINE_EXCEEDED, false, 0};
         try
         {
-            pending_fetches.emplace_back(
-                    fetch_client,
-                    fetch_client->fetchRangeAsync(story_id, start_time, end_time, kHotFetchMaxEvents));
+            request_->respond(query_); // Exact v3 scalar ACK: query accepted.
+            request_.reset();          // Only after a known native answer, on worker.
+            auto* agent = service_->prepareQuery(receiver_,
+                                                 query_,
+                                                 story_,
+                                                 chronicle_,
+                                                 name_,
+                                                 start_,
+                                                 end_,
+                                                 operation.deadline(),
+                                                 response_);
+            if(!agent)
+                return {CL_ERR_RPC_CAPACITY, true, {}};
+            while(!agent->takeReady(query_))
+            {
+                if(operation.deadline().expired())
+                    return {CL_ERR_OUTCOME_UNCONFIRMED, true, {}};
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            auto result = agent->transferOwnedQueryResponse(response_,
+                                                            std::move(child_),
+                                                            std::move(*sourcePermit_),
+                                                            operation.deadline());
+            sourcePermit_.reset();
+            if(result.status == CL_SUCCESS)
+                return {CL_SUCCESS, true, 1};
+            if(!result.reply && result.may_have_dispatched)
+            {
+                // The child owns the immutable encoded response and source
+                // permit. The coordinator needs no new slot to report expiry.
+                response_.reset();
+                return {CL_ERR_OUTCOME_UNCONFIRMED, true, 0};
+            }
+            // No confirmed delivery. Keep prepared events pending rather than
+            // deleting them or claiming partial-success delivery.
+            return {result.status, true, {}};
         }
-        catch(tl::exception const& ex)
+        catch(...)
         {
-            all_keepers_answered = false;
-            LOG_WARNING("[PlaybackService] query {} story {} could not issue a hot fetch to {}: {}",
-                        query_id,
-                        story_id,
-                        chl::to_string(keeper_service_id),
-                        ex.what());
+            return {CL_ERR_OUTCOME_UNCONFIRMED, true, {}};
         }
     }
 
-    std::vector<chl::HotRangeResponse> hot_responses;
-    hot_responses.reserve(pending_fetches.size());
-    for(auto& pending: pending_fetches)
+private:
+    rpc::BulkPermits::Permit queryPermit_;
+    std::optional<rpc::BulkPermits::Permit> sourcePermit_;
+    std::shared_ptr<PlaybackRpcOwner> owner_;
+    PlaybackService* service_;
+    rpc::RpcReservation child_;
+    ServiceId receiver_;
+    uint32_t query_;
+    StoryId story_;
+    std::string chronicle_, name_;
+    uint64_t start_, end_;
+    rpc::RpcDeadline ackDeadline_;
+    std::shared_ptr<PlaybackQueryResponse> response_;
+    std::optional<tl::request> request_;
+};
+} // namespace chronolog
+void chronolog::PlaybackService::playback_service_available(tl::request const& request)
+{
+    auto owner = owner_.lock();
+    auto entry = owner ? owner->enter() : std::optional<PlaybackRpcOwner::Entry>{};
+    if(!entry)
+        return;
+    auto runtime = owner->runtime.lock();
+    if(!runtime)
+        return;
+    auto permit = owner->queryPermits.acquire();
+    if(!permit)
+        return;
+    auto reserved = runtime->reserve(rpc::RpcDeadline::after(std::chrono::milliseconds(owner->policy.attempt_ms)));
+    if(!reserved)
+        return;
+    class Ready final: public rpc::OwnedRpcWork<int>
     {
-        hot_responses.push_back(pending.first->waitForRange(pending.second));
-        all_keepers_answered = all_keepers_answered && hot_responses.back().answered;
-        any_truncated = any_truncated || hot_responses.back().truncated;
-        if(hot_responses.back().truncated)
+        rpc::BulkPermits::Permit permit_;
+        std::shared_ptr<PlaybackRpcOwner> owner_;
+        tl::request request_;
+
+    public:
+        Ready(rpc::BulkPermits::Permit permit, std::shared_ptr<PlaybackRpcOwner> owner, tl::request const& request)
+            : permit_(std::move(permit))
+            , owner_(std::move(owner))
+            , request_(request)
+        {}
+        rpc::RpcResult<int> run(rpc::OperationContext& operation) override
         {
-            LOG_WARNING("[PlaybackService] query {} story {} hot fetch from {} truncated at {} events",
-                        query_id,
-                        story_id,
-                        chl::to_string(pending.first->getKeeperServiceId()),
-                        kHotFetchMaxEvents);
+            if(!operation.tryBeginDispatch())
+                return {CL_ERR_DEADLINE_EXCEEDED, false, 0};
+            try
+            {
+                request_.respond(1);
+                return {CL_SUCCESS, true, 1};
+            }
+            catch(...)
+            {
+                return {CL_ERR_OUTCOME_UNCONFIRMED, true, {}};
+            }
+        }
+    };
+    try
+    {
+        runtime->submit<int>(std::move(reserved), std::make_shared<Ready>(std::move(*permit), owner, request))
+                .releaseToRuntime();
+    }
+    catch(...)
+    {}
+}
+void chronolog::PlaybackService::story_playback_request(tl::request const& request,
+                                                        ServiceId const& receiver,
+                                                        uint32_t query,
+                                                        StoryId const& story,
+                                                        ChronicleName const& chronicle,
+                                                        StoryName const& name,
+                                                        chrono_time const& start,
+                                                        chrono_time const& end)
+{
+    auto started = rpc::RpcDeadline::Clock::now();
+    auto owner = owner_.lock();
+    auto entry = owner ? owner->enter() : std::optional<PlaybackRpcOwner::Entry>{};
+    if(!entry)
+        return;
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(owner->policy.replay_ms));
+    auto admission = owner->reserveQuery(deadline);
+    if(!admission)
+        return;
+    auto runtime = owner->runtime.lock();
+    if(!runtime)
+        return;
+    auto ackDeadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(owner->policy.attempt_ms));
+    try
+    {
+        auto work = std::make_shared<PlaybackQueryWork>(owner,
+                                                        this,
+                                                        std::move(admission->response),
+                                                        std::move(admission->queryPermit),
+                                                        std::move(admission->sourcePermit),
+                                                        request,
+                                                        receiver,
+                                                        query,
+                                                        story,
+                                                        chronicle,
+                                                        name,
+                                                        // a replay that starts at 0 starts at the
+                                                        // earliest event time; see replayStartTime
+                                                        replayStartTime(start),
+                                                        end,
+                                                        ackDeadline);
+        runtime->submit<int>(std::move(admission->coordinator), std::move(work)).releaseToRuntime();
+    }
+    catch(...)
+    {}
+}
+chronolog::QueryResponseAgent*
+chronolog::PlaybackService::prepareQuery(ServiceId const& receiver,
+                                         uint32_t query,
+                                         StoryId const& story,
+                                         ChronicleName const& chronicle,
+                                         StoryName const& name,
+                                         chrono_time const& start,
+                                         chrono_time const& end,
+                                         rpc::RpcDeadline const& deadline,
+                                         std::shared_ptr<PlaybackQueryResponse>& response)
+{
+    auto owner = owner_.lock();
+    auto runtime = owner ? owner->runtime.lock() : nullptr;
+    if(!owner || !runtime)
+        return nullptr;
+    QueryResponseAgent* agent = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(playbackServiceMutex);
+        auto found = responseSenders.find(receiver.get_service_endpoint());
+        if(found != responseSenders.end())
+            agent = found->second;
+        else
+        {
+            auto created =
+                    std::unique_ptr<QueryResponseAgent>(QueryResponseAgent::CreateQueryResponseAgent(owner, receiver));
+            if(!created)
+                return nullptr;
+            agent = created.get();
+            responseSenders.emplace(receiver.get_service_endpoint(), created.release());
         }
     }
-    chl::HotRangeSplit split = chl::splitHotRange(hot_responses, start_time, end_time);
-
+    auto keepers = theActiveDataStore.getStoryKeepers(story);
+    auto hotDeadline = KeeperHotFetchClient::fanoutDeadline(deadline,
+                                                            rpc::RpcDeadline::Clock::now(),
+                                                            std::chrono::milliseconds(owner->policy.attempt_ms));
+    // Each fetch needs a hot permit and a slot, and there are two permits, so
+    // the keepers are fetched in waves of at most two. A wave waits, up to
+    // the hot deadline, until it holds all its permits and slots, then issues
+    // its fetches together. A keeper not fetched before the deadline makes the
+    // reply partial, as one that does not answer does.
+    std::vector<HotRangeResponse> hot;
+    bool allAnswered = true, anyTruncated = false;
+    for(size_t next = 0; next < keepers.size();)
+    {
+        size_t const want = std::min<size_t>(2, keepers.size() - next);
+        std::vector<rpc::RpcReservation> reserved;
+        std::vector<rpc::BulkPermits::Permit> hotPermits;
+        while(reserved.size() < want && !hotDeadline.expired())
+        {
+            {
+                std::unique_lock<std::timed_mutex> lock(owner->admissionMutex, std::defer_lock);
+                if(!lock.try_lock_until(hotDeadline.expiresAt()))
+                    break;
+                while(reserved.size() < want)
+                {
+                    auto permit = owner->hotPermits.acquire();
+                    if(!permit)
+                        break;
+                    auto slot = runtime->reserve(hotDeadline);
+                    if(!slot)
+                        break;
+                    hotPermits.push_back(std::move(*permit));
+                    reserved.push_back(std::move(slot));
+                }
+            }
+            if(reserved.size() < want)
+            {
+                // Give back a partial wave, so two queries cannot each hold
+                // one permit and wait for the other's.
+                reserved.clear();
+                hotPermits.clear();
+                std::this_thread::sleep_for(std::min(hotDeadline.remaining(),
+                                                     rpc::RpcDeadline::Clock::duration(std::chrono::milliseconds(1))));
+            }
+        }
+        if(reserved.size() < want)
+        {
+            allAnswered = false;
+            break;
+        }
+        std::vector<KeeperHotFetchClient*> clients;
+        for(size_t i = 0; i < want; ++i)
+        {
+            auto* client = getHotFetchClient(keepers[next + i]);
+            if(client)
+                clients.push_back(client);
+            else
+                allAnswered = false;
+        }
+        auto barrier = std::make_shared<rpc::FanoutIssueBarrier>(static_cast<unsigned>(clients.size()));
+        std::vector<std::pair<KeeperHotFetchClient*, rpc::RpcPending<HotRangeResponse>>> pending;
+        for(size_t i = 0; i < clients.size(); ++i)
+            pending.emplace_back(
+                    clients[i],
+                    clients[i]->fetchRangeAsync(std::move(reserved[i]),
+                                                story,
+                                                start,
+                                                end,
+                                                262144,
+                                                barrier,
+                                                std::optional<rpc::BulkPermits::Permit>(std::move(hotPermits[i]))));
+        for(auto& child: pending)
+        {
+            hot.push_back(child.first->waitForRange(child.second));
+            allAnswered &= hot.back().answered;
+            anyTruncated |= hot.back().truncated;
+        }
+        next += want;
+    }
+    auto split = splitHotRange(hot, start, end);
     LOG_DEBUG("[PlaybackService] query_id {} story_id {} range {}-{} keepers {} hot_boundary {} hot_events {}",
-              query_id,
-              story_id,
-              start_time,
-              end_time,
-              story_keepers.size(),
+              query,
+              story,
+              start,
+              end,
+              keepers.size(),
               split.boundary,
               split.hotEvents.size());
-
-    // allocate PlaybackQueryResponse instance for this query
-    // and put it on the ResponseTransferAgent's active_queries map
-
-    chl::PlaybackQueryResponse* query_response = new chl::PlaybackQueryResponse(query_id);
-
-    // hot side: merged keeper events at or above B
-    for(auto const& log_event: split.hotEvents)
-    {
-        query_response->events.push_back(
-                chl::Event{log_event.eventTime, log_event.clientId, log_event.eventIndex, log_event.logRecord});
-    }
-
+    auto plan = planReplay(split, start, end, allAnswered, anyTruncated);
+    response = std::make_shared<PlaybackQueryResponse>(query);
+    response->complete = plan.complete;
+    for(auto const& event: split.hotEvents)
+        response->events.push_back(Event{event.eventTime, event.clientId, event.eventIndex, event.logRecord});
     LOG_DEBUG("[PlaybackService] query {} for story_id {} got {} hot events from {} keeper(s)",
-              query_id,
-              story_id,
-              query_response->events.size(),
-              story_keepers.size());
-
-    // where the archive read ends, and whether this reply holds every event in
-    // the range; see planReplay in HotRangeSplit.h
-    chl::ReplayPlan const plan = chl::planReplay(split, start_time, end_time, all_keepers_answered, any_truncated);
-    query_response->complete = plan.complete;
-    if(!plan.complete)
-    {
-        LOG_WARNING("[PlaybackService] query {} story {} is answered short: keepers all answered {}, truncated {}",
-                    query_id,
-                    story_id,
-                    all_keepers_answered,
-                    any_truncated);
-    }
-
-    // the record is handed over as complete only when no archive read follows it
-    if(chl::CL_SUCCESS != queryResponseSender->stashQueryResponseRecord(query_id, query_response, !plan.archiveNeeded))
-    {
-        delete query_response;
-        request.respond(0);
-        return;
-    }
-
+              query,
+              story,
+              response->events.size(),
+              keepers.size());
+    if(agent->stashOwnedQueryResponse(query, response, !plan.archiveNeeded) != CL_SUCCESS)
+        return nullptr;
     if(plan.archiveNeeded)
     {
-        // portion of the playback response is coming from the archived files
-
-        // create an archiveRequest and put it
-        // onto the ArchiveReadingRequestQueue
-
-        chl::ArchiveReadingRequest* a_request = new chl::ArchiveReadingRequest(queryResponseSender,
-                                                                               query_id,
-                                                                               chronicle_name,
-                                                                               story_name,
-                                                                               start_time,
-                                                                               plan.archiveEnd);
-
-        theArchiveReadingRequestQueue.pushReadingRequest(a_request);
+        auto request = std::make_unique<ArchiveReadingRequest>(agent, query, chronicle, name, start, plan.archiveEnd);
+        theArchiveReadingRequestQueue.pushReadingRequest(request.get());
+        request.release();
     }
-
-    request.respond(query_id);
+    return agent;
 }

@@ -10,6 +10,7 @@
 #include <cstdint>
 
 #include <thallium.hpp>
+#include <LifecycleRecord.h>
 
 #include <ChunkReceipt.h>
 #include <StoryChunk.h>
@@ -61,6 +62,7 @@ public:
     {}
 
     ~KeeperDataStore();
+    std::size_t nativeHandleCount() const noexcept { return nativeHandles_.load(std::memory_order_acquire); }
 
     bool is_running() const { return (RUNNING == state); }
 
@@ -136,7 +138,9 @@ private:
     // the pipeline, or nullptr when it could not be added.
     KeeperStoryPipeline* addStoryPipeline(ChronicleName const&, StoryName const&, StoryId const&, uint64_t start_time);
 
-    DataStoreState state;
+    std::atomic<std::size_t> nativeHandles_{0};
+    std::atomic<DataStoreState> state;
+    rpc::JoinRecord collectionJoin;
     std::mutex dataStoreStateMutex;
     IngestionQueue& theIngestionQueue;
     StoryChunkExtractionQueue& theExtractionQueue;

@@ -49,8 +49,8 @@
 # gave writer B and B's post-restart successes at keeper 2's parity, without
 # judging them.
 #
-# The scenario runs once with the template's protocol and once with ofi+tcp if
-# the template uses another one (PROTOCOLS="..." overrides the list). The
+# The scenario runs once with the template's protocol and once with the other
+# of ofi+tcp and ofi+sockets (PROTOCOLS="..." overrides the list). The
 # keeper and grapher chunk and acceptance times are pinned, since check 3
 # depends on them: an event is sealed on its keeper at most
 # K_CHUNK_SECS + K_ACCEPT_SECS after its time, and the grapher writes it no
@@ -90,6 +90,9 @@ STORY_A=HeldStoryA
 STORY_B=HeldStoryB
 
 INTERVAL_MS=100
+# a durable call's whole budget is DURABLE_ATTEMPTS x DURABLE_TIMEOUT_MS
+DURABLE_TIMEOUT_MS=1000
+DURABLE_ATTEMPTS=1
 PRE_SECS=15
 DOWN_SECS=20
 POST_SECS=30
@@ -179,7 +182,7 @@ start_writer() {
          .chrono_client.Monitoring.monitor.file = $log |
          .chrono_client.Monitoring.monitor.filesize = 104857600' "$CLIENT_CONF" > "$conf" || return 1
     "$PROBE" --config "$conf" --chronicle "$CHRONICLE" --story "$2" --loop --interval-ms "$INTERVAL_MS" \
-        --timeout-ms 1000 --attempts 1 --stop-file "$RUN_DIR/stop" --release-file "$RUN_DIR/release" \
+        --timeout-ms "$DURABLE_TIMEOUT_MS" --attempts "$DURABLE_ATTEMPTS" --stop-file "$RUN_DIR/stop" --release-file "$RUN_DIR/release" \
         > "$RUN_DIR/$1.out" 2>&1 &
     WRITER_PIDS="$WRITER_PIDS $!"
 }
@@ -329,10 +332,20 @@ run_scenario() {
 
     # -------------------------------------------- failures while down ----
     local k1_up_while_down k2_up_while_down fails_outside longest_call
+    # Over ofi+tcp an accepted call to the dead keeper ends at the client's
+    # append deadline (RpcPolicy.append_ms), so that plus a little is the
+    # limit on a call; over ofi+sockets it fails at once. A call that started
+    # less than that before the restart may be answered by the restarted
+    # keeper, so only calls that started before settled_ns must have failed.
+    local append_ms call_limit_ms settled_ns
+    append_ms=$(jq -r '.chrono_client.RpcPolicy.append_ms // 5000' "$CLIENT_CONF" 2> /dev/null)
+    case "$append_ms" in '' | *[!0-9]*) append_ms=5000 ;; esac
+    call_limit_ms=$((append_ms + 500))
+    settled_ns=$((RESTART_NS - call_limit_ms * 1000000))
     k1_up_while_down=$(events "$RUN_DIR/writerA.out" | awk -v kill="$KILL_NS" -v restart="$RESTART_NS" -v p="$K2_PARITY" \
         '$2 == "CL_SUCCESS" && $6 > kill + 1e9 && $6 < restart && $7 != p' | wc -l)
-    k2_up_while_down=$(events "$RUN_DIR/writerA.out" | awk -v kill="$KILL_NS" -v restart="$RESTART_NS" -v p="$K2_PARITY" \
-        '$2 == "CL_SUCCESS" && $6 > kill + 1e9 && $6 < restart && $7 == p' | wc -l)
+    k2_up_while_down=$(events "$RUN_DIR/writerA.out" | awk -v kill="$KILL_NS" -v settled="$settled_ns" -v p="$K2_PARITY" \
+        '$2 == "CL_SUCCESS" && $6 > kill + 1e9 && $6 < settled && $7 == p' | wc -l)
     # the longest any call of writer A took from the kill on, in ms: a call
     # that waits on the dead keeper holds up every later event of the writer
     longest_call=$(events "$RUN_DIR/writerA.out" | awk -v kill="$KILL_NS" -v interval="$INTERVAL_MS" \
@@ -350,11 +363,11 @@ run_scenario() {
     log_k2=$(echo "$log_ports" | awk -v k2="$k2_port" 'NF == 2 && $2 == k2 { n += $1 } END { print n + 0 }')
     log_other=$(echo "$log_ports" | awk -v k2="$k2_port" 'NF == 2 && $2 != k2 { n += $1 } END { print n + 0 }')
     if [ "$a_fails" -gt 0 ] && [ "$k1_up_while_down" -gt 0 ] && [ "$k2_up_while_down" -eq 0 ] &&
-       [ "$fails_outside" -eq 0 ] && [ "$longest_call" -lt 5000 ] &&
+       [ "$fails_outside" -eq 0 ] && [ "$longest_call" -le "$call_limit_ms" ] &&
        [ "$log_k2" -ge $((a_fails + b_fails)) ] && [ "$log_other" -eq 0 ]; then
-        ok "$PROTO: down: only keeper 2's events failed: $a_fails failed call(s) of writer A and $b_fails of writer B, all between the kill and the reconnect, while $k1_up_while_down of A's events reached keeper 1; no call took over ${longest_call} ms; the clients logged $log_k2 failure(s), all for keeper 2 (port $k2_port)"
+        ok "$PROTO: down: only keeper 2's events failed: $a_fails failed call(s) of writer A and $b_fails of writer B, all between the kill and the reconnect, while $k1_up_while_down of A's events reached keeper 1; the longest call took ${longest_call} ms (limit ${call_limit_ms}); the clients logged $log_k2 failure(s), all for keeper 2 (port $k2_port)"
     else
-        bad "$PROTO: down: $a_fails failed call(s) of A ($fails_outside outside the down time) and $b_fails of B; while keeper 2 was down $k1_up_while_down of A's events reached keeper 1 and $k2_up_while_down succeeded at keeper 2's parity; the longest call of A took ${longest_call} ms; client failure log lines per keeper port: $(echo $log_ports)"
+        bad "$PROTO: down: $a_fails failed call(s) of A ($fails_outside outside the down time) and $b_fails of B; while keeper 2 was down $k1_up_while_down of A's events reached keeper 1 and $k2_up_while_down succeeded at keeper 2's parity; the longest call of A took ${longest_call} ms (limit ${call_limit_ms}); client failure log lines per keeper port: $(echo $log_ports)"
     fi
     say "$PROTO: codes of the failed calls: $(cat "$RUN_DIR"/writer[AB].out | sed -n 's/^EVENT //p' |
         awk '$2 != "CL_SUCCESS" { c[$1 " " $2]++ } END { for(k in c) printf "%s=%d ", k, c[k] }')"
@@ -362,26 +375,32 @@ run_scenario() {
     # writer A's durable calls before the kill, so a durable call to it now got
     # no answer: it may have been stored, and the client returns
     # CL_ERR_DURABILITY_UNKNOWN, never CL_ERR_DURABILITY_UNAVAILABLE ("nothing
-    # was stored"). After the restart a durable call may also succeed. An
+    # was stored"). A durable call that could have ended after the restart may
+    # also succeed: one sent while keeper 2 was down can reach the new keeper
+    # once it listens on the same port, so its start time ($6) is before
+    # RESTART_NS. A durable call ends within its budget of attempts x
+    # timeout_ms, so only a success that started before durable_settled_ns,
+    # and so ended while keeper 2 was down, is wrong. An
     # accepted call sent before the restart fails with some error code. A failed
     # call prints event time 0, so its parity says nothing; the calls of keeper 2
     # are all but the successes at keeper 1's parity (the check above ties every
     # failure to keeper 2 through the client log).
-    local down_calls durable_down durable_bad accepted_down accepted_bad down_summary
+    local down_calls durable_down durable_bad accepted_down accepted_bad down_summary durable_settled_ns
+    durable_settled_ns=$((RESTART_NS - (DURABLE_TIMEOUT_MS * DURABLE_ATTEMPTS + 500) * 1000000))
     down_calls=$(events "$RUN_DIR/writerA.out" | awk -v kill="$KILL_NS" -v rec="$reconnect_ns" -v p="$K2_PARITY" \
         '$6 > kill + 1e9 && $6 < rec && !($2 == "CL_SUCCESS" && $7 != p)')
     durable_down=$(echo "$down_calls" | awk '$1 == "durable"' | wc -l)
-    durable_bad=$(echo "$down_calls" | awk -v restart="$RESTART_NS" \
-        '$1 == "durable" && $2 != "CL_ERR_DURABILITY_UNKNOWN" && !($2 == "CL_SUCCESS" && $6 > restart)' | wc -l)
+    durable_bad=$(echo "$down_calls" | awk -v settled="$durable_settled_ns" \
+        '$1 == "durable" && $2 != "CL_ERR_DURABILITY_UNKNOWN" && !($2 == "CL_SUCCESS" && $6 > settled)' | wc -l)
     accepted_down=$(echo "$down_calls" | awk -v restart="$RESTART_NS" '$1 == "accepted" && $6 < restart' | wc -l)
-    accepted_bad=$(echo "$down_calls" | awk -v restart="$RESTART_NS" \
-        '$1 == "accepted" && $6 < restart && $2 == "CL_SUCCESS"' | wc -l)
+    accepted_bad=$(echo "$down_calls" | awk -v settled="$settled_ns" \
+        '$1 == "accepted" && $6 < settled && $2 == "CL_SUCCESS"' | wc -l)
     down_summary=$(echo "$down_calls" | awk -v restart="$RESTART_NS" \
         'NF { c[$1 " " $2 " " (($6 > restart) ? "after" : "before")]++ } END { for(k in c) printf "%s=%d, ", k, c[k] }')
     if [ "$durable_down" -gt 0 ] && [ "$durable_bad" -eq 0 ] && [ "$accepted_down" -gt 0 ] && [ "$accepted_bad" -eq 0 ]; then
-        ok "$PROTO: codes: writer A's $durable_down durable call(s) to keeper 2 between the kill and the reconnect returned CL_ERR_DURABILITY_UNKNOWN or, after the restart, CL_SUCCESS, and its $accepted_down accepted call(s) to keeper 2 before the restart failed (mode code before/after the restart: ${down_summary%, })"
+        ok "$PROTO: codes: writer A's $durable_down durable call(s) to keeper 2 between the kill and the reconnect returned CL_ERR_DURABILITY_UNKNOWN or, when it could have ended after the restart, CL_SUCCESS, and its $accepted_down accepted call(s) to keeper 2 before the restart failed (mode code before/after the restart: ${down_summary%, })"
     else
-        bad "$PROTO: codes: of writer A's $durable_down durable call(s) to keeper 2 between the kill and the reconnect, $durable_bad returned neither CL_ERR_DURABILITY_UNKNOWN nor a post-restart CL_SUCCESS; $accepted_bad of its $accepted_down accepted call(s) to keeper 2 before the restart succeeded (mode code before/after the restart: ${down_summary%, })"
+        bad "$PROTO: codes: of writer A's $durable_down durable call(s) to keeper 2 between the kill and the reconnect, $durable_bad returned neither CL_ERR_DURABILITY_UNKNOWN nor a CL_SUCCESS that could have ended after the restart; $accepted_bad of its $accepted_down accepted call(s) to keeper 2 before the restart succeeded (mode code before/after the restart: ${down_summary%, })"
     fi
 
     # ------------------------------------------------------ hot replay ----
@@ -556,7 +575,11 @@ fi
 TEMPLATE_PROTO=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.protocol_conf' "$CONF_TEMPLATE")
 if [ -z "${PROTOCOLS:-}" ]; then
     PROTOCOLS="$TEMPLATE_PROTO"
-    [ "$TEMPLATE_PROTO" = "ofi+tcp" ] || PROTOCOLS="$PROTOCOLS ofi+tcp"
+    if [ "$TEMPLATE_PROTO" = "ofi+tcp" ]; then
+        PROTOCOLS="$PROTOCOLS ofi+sockets"
+    else
+        PROTOCOLS="$PROTOCOLS ofi+tcp"
+    fi
 fi
 
 command cp -f "$CONF_TEMPLATE" "$CONF_TEMPLATE.restart_held_backup"

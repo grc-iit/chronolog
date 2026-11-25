@@ -52,6 +52,8 @@ int main()
     localServiceId.get_service_as_string(LOCAL_SERVICE_NA_STRING);
 
     tl::engine* localEngine = nullptr;
+    auto runtime = std::make_shared<chl::rpc::RpcRuntime>();
+    std::shared_ptr<chl::PlaybackRpcOwner> owner;
     chl::PlaybackService* playbackService = nullptr;
 
     chl::ServiceId queryServiceId("ofi+sockets", "127.0.0.1", 5557, 57);
@@ -63,12 +65,16 @@ int main()
     try
     {
         margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
-        localEngine = new tl::engine(margo_id);
+        owner = std::make_shared<chl::PlaybackRpcOwner>(std::make_unique<tl::engine>(margo_id),
+                                                        chl::RpcTimeoutPolicy{});
+        owner->attach(runtime);
+        owner->initializeProcedure();
+        localEngine = owner->engine.get();
 
         std::cout << "started localEngine at " << localEngine->self() << std::endl;
 
 
-        playbackService = chl::PlaybackService::CreatePlaybackService(*localEngine,
+        playbackService = chl::PlaybackService::CreatePlaybackService(owner,
                                                                       localServiceId.getProviderId(),
                                                                       activeDataStore,
                                                                       readingRequestQueue);
@@ -106,7 +112,8 @@ int main()
 
     std::cout << "Shutting down  TransferAgent for " << chl::to_string(queryServiceId) << std::endl;
 
-    delete playbackService;
-    delete localEngine;
+    owner->quiesce();
+    while(runtime->drain(chl::rpc::RpcDeadline::after(std::chrono::seconds(30))) != chl::CL_SUCCESS)
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     return 1;
 }

@@ -1,0 +1,1335 @@
+#include <gtest/gtest.h>
+#include <RpcRuntime.h>
+#include <thallium/timeout.hpp>
+#include <atomic>
+#include <condition_variable>
+#include <functional>
+#include <filesystem>
+#include <future>
+#include <mutex>
+#include <limits>
+#include <type_traits>
+#include <thread>
+#include <vector>
+
+using namespace std::chrono_literals;
+using namespace chronolog;
+using namespace chronolog::rpc;
+
+namespace
+{
+struct Gate
+{
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool entered = false;
+    bool open = false;
+    void block()
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        entered = true;
+        changed.notify_all();
+        changed.wait(lock, [&] { return open; });
+    }
+    bool waitForEntry()
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        return changed.wait_for(lock, 2s, [&] { return entered; });
+    }
+    void release()
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        open = true;
+        changed.notify_all();
+    }
+};
+struct ReleaseGates
+{
+    std::vector<std::shared_ptr<Gate>> gates;
+    ~ReleaseGates()
+    {
+        for(auto const& gate: gates) gate->release();
+    }
+};
+
+template <class Reply>
+struct Work: OwnedRpcWork<Reply>
+{
+    std::function<RpcResult<Reply>(OperationContext&)> body;
+    explicit Work(std::function<RpcResult<Reply>(OperationContext&)> f)
+        : body(std::move(f))
+    {}
+    RpcResult<Reply> run(OperationContext& context) override { return body(context); }
+};
+
+template <class Reply = int, class Fn>
+std::shared_ptr<OwnedRpcWork<Reply>> work(Fn&& fn)
+{
+    return std::make_shared<Work<Reply>>(std::forward<Fn>(fn));
+}
+
+RpcResult<int> confirmed(int value = 7) { return {CL_SUCCESS, true, value}; }
+
+bool eventually(std::function<bool()> const& condition)
+{
+    auto until = RpcDeadline::Clock::now() + 2s;
+    while(!condition())
+    {
+        if(RpcDeadline::Clock::now() >= until)
+            return false;
+        std::this_thread::sleep_for(1ms);
+    }
+    return true;
+}
+
+struct DestructionGateWork: OwnedRpcWork<int>
+{
+    std::shared_ptr<Gate> destruction;
+    explicit DestructionGateWork(std::shared_ptr<Gate> gate)
+        : destruction(std::move(gate))
+    {}
+    ~DestructionGateWork() override { destruction->block(); }
+    RpcResult<int> run(OperationContext& context) override
+    {
+        if(!context.tryBeginDispatch())
+            return {CL_ERR_DEADLINE_EXCEEDED, false, {}};
+        return confirmed();
+    }
+};
+
+struct BlockingReply
+{
+    std::shared_ptr<Gate> publication;
+    std::shared_ptr<std::atomic<bool>> firstMove;
+    explicit BlockingReply(std::shared_ptr<Gate> gate)
+        : publication(std::move(gate))
+        , firstMove(std::make_shared<std::atomic<bool>>(true))
+    {}
+    BlockingReply(BlockingReply&& other) noexcept
+        : publication(std::move(other.publication))
+        , firstMove(std::move(other.firstMove))
+    {
+        if(firstMove && firstMove->exchange(false))
+            publication->block();
+    }
+    BlockingReply(BlockingReply const&) = delete;
+};
+} // namespace
+
+TEST(RpcRuntime, DeliversConfirmedRemoteRejection)
+{
+    RpcRuntime runtime;
+    auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                      work(
+                                              [](OperationContext& context)
+                                              {
+                                                  if(!context.tryBeginDispatch())
+                                                      return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                                                  return RpcResult<int>{CL_ERR_NO_KEEPERS, true, 0};
+                                              }));
+    EXPECT_EQ(result.status, CL_ERR_NO_KEEPERS);
+    EXPECT_TRUE(result.may_have_dispatched);
+    ASSERT_TRUE(result.reply);
+    EXPECT_EQ(*result.reply, 0);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, ExpiredEntryNeverRunsOrDispatches)
+{
+    RpcRuntime runtime;
+    std::atomic<int> runs{0};
+    auto deadline = RpcDeadline::fromStart(RpcDeadline::Clock::now() - 1s, 1ms);
+    auto result = runtime.invoke<int>(deadline,
+                                      work(
+                                              [&](OperationContext&)
+                                              {
+                                                  ++runs;
+                                                  return confirmed();
+                                              }));
+    EXPECT_EQ(result.status, CL_ERR_DEADLINE_EXCEEDED);
+    EXPECT_FALSE(result.may_have_dispatched);
+    EXPECT_FALSE(result.reply);
+    EXPECT_EQ(runs, 0);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, BlockedOwnedLookupExpiresWithoutForwardingOrLosingOwners)
+{
+    RpcRuntime runtime;
+    auto lookup = std::make_shared<Gate>();
+    ReleaseGates cleanup{{lookup}};
+    auto owner = std::make_shared<int>(42);
+    std::weak_ptr<int> weak = owner;
+    auto forwards = std::make_shared<std::atomic<int>>(0);
+    auto started = RpcDeadline::Clock::now();
+    auto result = runtime.invoke<int>(RpcDeadline::fromStart(started, 40ms),
+                                      work(
+                                              [lookup, owner, forwards](OperationContext& context)
+                                              {
+                                                  lookup->block();
+                                                  EXPECT_EQ(*owner,
+                                                            42); // lookup still accesses its lease after caller expiry
+                                                  if(!context.tryBeginDispatch())
+                                                      return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                                                  ++*forwards;
+                                                  return confirmed(*owner);
+                                              }));
+    owner.reset();
+    EXPECT_TRUE(lookup->waitForEntry());
+    EXPECT_EQ(result.status, CL_ERR_DEADLINE_EXCEEDED);
+    EXPECT_FALSE(result.may_have_dispatched);
+    EXPECT_LT(RpcDeadline::Clock::now() - started, 500ms);
+    EXPECT_FALSE(weak.expired());
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(20ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+    EXPECT_FALSE(weak.expired());
+    lookup->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+    EXPECT_EQ(*forwards, 0);
+    EXPECT_TRUE(weak.expired());
+}
+
+TEST(RpcRuntime, DispatchReservationWinsBeforeCallerExpiry)
+{
+    RpcRuntime runtime;
+    auto reply = std::make_shared<Gate>();
+    ReleaseGates cleanup{{reply}};
+    auto result = runtime.invoke<int>(RpcDeadline::after(40ms),
+                                      work(
+                                              [reply](OperationContext& context)
+                                              {
+                                                  if(!context.tryBeginDispatch())
+                                                      return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                                                  reply->block();
+                                                  return confirmed();
+                                              }));
+    EXPECT_TRUE(reply->waitForEntry());
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_TRUE(result.may_have_dispatched);
+    EXPECT_FALSE(result.reply);
+    reply->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, CompletionWinsBeforeExpiry)
+{
+    RpcRuntime runtime;
+    auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                      work(
+                                              [](OperationContext& context)
+                                              {
+                                                  EXPECT_TRUE(context.tryBeginDispatch());
+                                                  return confirmed(73);
+                                              }));
+    ASSERT_TRUE(result.reply);
+    EXPECT_EQ(*result.reply, 73);
+    EXPECT_EQ(result.status, CL_SUCCESS);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, ResultPublicationContentionDoesNotHoldCaller)
+{
+    RpcRuntime runtime;
+    auto publication = std::make_shared<Gate>();
+    ReleaseGates cleanup{{publication}};
+    auto started = RpcDeadline::Clock::now();
+    auto result = runtime.invoke<BlockingReply>(
+            RpcDeadline::fromStart(started, 40ms),
+            work<BlockingReply>(
+                    [publication](OperationContext& context)
+                    {
+                        EXPECT_TRUE(context.tryBeginDispatch());
+                        return RpcResult<BlockingReply>{CL_SUCCESS,
+                                                        true,
+                                                        std::optional<BlockingReply>(std::in_place, publication)};
+                    }));
+    EXPECT_TRUE(publication->waitForEntry());
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_FALSE(result.reply);
+    EXPECT_LT(RpcDeadline::Clock::now() - started, 500ms);
+    publication->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+    EXPECT_FALSE(result.reply);
+}
+
+TEST(RpcRuntime, TwoExpiredLookupsSaturateExactlyTwoSlots)
+{
+    RpcRuntime runtime;
+    auto lookup1 = std::make_shared<Gate>();
+    auto lookup2 = std::make_shared<Gate>();
+    ReleaseGates cleanup{{lookup1, lookup2}};
+    for(auto const& lookup: {lookup1, lookup2})
+    {
+        auto result = runtime.invoke<int>(RpcDeadline::after(20ms),
+                                          work(
+                                                  [lookup](OperationContext& context)
+                                                  {
+                                                      lookup->block();
+                                                      if(!context.tryBeginDispatch())
+                                                          return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                                                      return confirmed();
+                                                  }));
+        EXPECT_EQ(result.status, CL_ERR_DEADLINE_EXCEEDED);
+        EXPECT_TRUE(lookup->waitForEntry());
+    }
+    std::atomic<int> unexpected{0};
+    auto started = RpcDeadline::Clock::now();
+    for(int i = 0; i != 32; ++i)
+    {
+        auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                          work(
+                                                  [&](OperationContext&)
+                                                  {
+                                                      ++unexpected;
+                                                      return confirmed();
+                                                  }));
+        EXPECT_EQ(result.status, CL_ERR_RPC_CAPACITY);
+        EXPECT_FALSE(result.may_have_dispatched);
+    }
+    EXPECT_EQ(unexpected, 0);
+    EXPECT_LT(RpcDeadline::Clock::now() - started, 200ms);
+    lookup1->release();
+    lookup2->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, ReservationChargesCapacityBeforePayloadPreparation)
+{
+    RpcRuntime runtime;
+    auto first = runtime.reserve(RpcDeadline::after(1s));
+    auto second = runtime.reserve(RpcDeadline::after(1s));
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+    int allocations = 0;
+    for(int i = 0; i != 32; ++i)
+    {
+        auto rejected = runtime.reserve(RpcDeadline::after(1s));
+        if(rejected)
+            ++allocations;
+        EXPECT_EQ(rejected.status(), CL_ERR_RPC_CAPACITY);
+    }
+    EXPECT_EQ(allocations, 0);
+    first = {};
+    second = {};
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, UnusedReservationReleasesOnlyThroughOwnedCleanup)
+{
+    RpcRuntime runtime;
+    {
+        auto reservation = runtime.reserve(RpcDeadline::after(1s));
+        ASSERT_TRUE(reservation);
+    }
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+    auto rejected = runtime.reserve(RpcDeadline::after(1s));
+    EXPECT_FALSE(rejected);
+    EXPECT_EQ(rejected.status(), CL_ERR_RPC_CAPACITY);
+}
+
+TEST(RpcRuntime, ExpiredReservationQueuesDestructionWithoutRunningWork)
+{
+    RpcRuntime runtime;
+    auto reservation = runtime.reserve(RpcDeadline::after(15ms));
+    ASSERT_TRUE(reservation);
+    auto destruction = std::make_shared<Gate>();
+    ReleaseGates cleanup{{destruction}};
+    auto pending = std::make_shared<DestructionGateWork>(destruction);
+    std::this_thread::sleep_for(30ms);
+    auto started = RpcDeadline::Clock::now();
+    auto result = runtime.invoke<int>(std::move(reservation), std::move(pending));
+    EXPECT_EQ(result.status, CL_ERR_DEADLINE_EXCEEDED);
+    EXPECT_FALSE(result.may_have_dispatched);
+    EXPECT_LT(RpcDeadline::Clock::now() - started, 300ms);
+    EXPECT_TRUE(destruction->waitForEntry());
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(20ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+    destruction->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, CloseRacingReservedSubmissionStillOwnsItsDestruction)
+{
+    RpcRuntime runtime;
+    auto reservation = runtime.reserve(RpcDeadline::after(1s));
+    ASSERT_TRUE(reservation);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(10ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+    auto destruction = std::make_shared<Gate>();
+    ReleaseGates cleanup{{destruction}};
+    auto result = runtime.invoke<int>(std::move(reservation), std::make_shared<DestructionGateWork>(destruction));
+    EXPECT_FALSE(result.may_have_dispatched);
+    EXPECT_FALSE(result.reply);
+    EXPECT_TRUE(destruction->waitForEntry());
+    destruction->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, NativeOwnerDestructionStaysOffCallerAndKeepsCapacity)
+{
+    RpcRuntime runtime;
+    auto first = std::make_shared<Gate>();
+    auto second = std::make_shared<Gate>();
+    ReleaseGates cleanup{{first, second}};
+    for(auto const& gate: {first, second})
+    {
+        auto reservation = runtime.reserve(RpcDeadline::after(1s));
+        ASSERT_TRUE(reservation);
+        auto started = RpcDeadline::Clock::now();
+        auto result = runtime.invoke<int>(std::move(reservation), std::make_shared<DestructionGateWork>(gate));
+        EXPECT_EQ(result.status, CL_SUCCESS);
+        EXPECT_LT(RpcDeadline::Clock::now() - started, 300ms);
+        EXPECT_TRUE(gate->waitForEntry());
+    }
+    auto rejected = runtime.reserve(RpcDeadline::after(1s));
+    EXPECT_EQ(rejected.status(), CL_ERR_RPC_CAPACITY);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(20ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+    first->release();
+    second->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, DroppingRuntimeHandleRetainsBlockedOwnerUntilSettlement)
+{
+    auto runtime = std::make_unique<RpcRuntime>();
+    auto lookup = std::make_shared<Gate>();
+    ReleaseGates cleanup{{lookup}};
+    auto owner = std::make_shared<int>(9);
+    std::weak_ptr<int> weak = owner;
+    auto result = runtime->invoke<int>(RpcDeadline::after(20ms),
+                                       work(
+                                               [owner, lookup](OperationContext& context)
+                                               {
+                                                   lookup->block();
+                                                   if(!context.tryBeginDispatch())
+                                                       return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                                                   return confirmed(*owner);
+                                               }));
+    owner.reset();
+    auto started = RpcDeadline::Clock::now();
+    runtime.reset();
+    EXPECT_LT(RpcDeadline::Clock::now() - started, 100ms);
+    EXPECT_FALSE(weak.expired());
+    lookup->release();
+    EXPECT_TRUE(eventually([&] { return weak.expired(); }));
+    EXPECT_EQ(result.status, CL_ERR_DEADLINE_EXCEEDED);
+}
+
+TEST(RpcRuntime, UnconfirmedBulkKeepsBothSlotsAndOwnersAfterClose)
+{
+    auto runtime = std::make_unique<RpcRuntime>();
+    std::vector<std::weak_ptr<std::vector<char>>> owners;
+    for(int i = 0; i != 2; ++i)
+    {
+        auto reservation = runtime->reserve(RpcDeadline::after(1s));
+        ASSERT_TRUE(reservation);
+        auto bytes = std::make_shared<std::vector<char>>(1024 * (i + 1), 'x');
+        owners.push_back(bytes);
+        auto result = runtime->invoke<int>(std::move(reservation),
+                                           work(
+                                                   [bytes](OperationContext& context)
+                                                   {
+                                                       EXPECT_TRUE(context.tryBeginDispatch());
+                                                       return RpcResult<int>{CL_ERR_OUTCOME_UNCONFIRMED, true, {}};
+                                                   }));
+        EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+        EXPECT_TRUE(result.may_have_dispatched);
+    }
+    EXPECT_EQ(runtime->reserve(RpcDeadline::after(1s)).status(), CL_ERR_RPC_CAPACITY);
+    EXPECT_EQ(runtime->drain(RpcDeadline::after(20ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+    runtime.reset();
+    for(auto const& owner: owners) EXPECT_FALSE(owner.expired());
+}
+
+TEST(RpcRuntime, CatchesThalliumTimeoutSeparatelyBeforeDispatch)
+{
+    RpcRuntime runtime;
+    auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                      work([](OperationContext&) -> RpcResult<int> { throw thallium::timeout(); }));
+    EXPECT_EQ(result.status, CL_ERR_DEADLINE_EXCEEDED);
+    EXPECT_FALSE(result.may_have_dispatched);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, CatchesThalliumTimeoutSeparatelyAfterDispatchAndRetainsOwner)
+{
+    RpcRuntime runtime;
+    auto owner = std::make_shared<int>(11);
+    std::weak_ptr<int> weak = owner;
+    auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                      work(
+                                              [owner](OperationContext& context) -> RpcResult<int>
+                                              {
+                                                  EXPECT_TRUE(context.tryBeginDispatch());
+                                                  throw thallium::timeout();
+                                              }));
+    owner.reset();
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_TRUE(result.may_have_dispatched);
+    EXPECT_FALSE(weak.expired());
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(20ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+}
+
+// A plain forward that timed out has returned, so Mercury is done with it. The
+// work marks it settled: the caller still gets CL_ERR_OUTCOME_UNCONFIRMED, but
+// the work is released and its slot serves the next call.
+TEST(RpcRuntime, SettledForwardWithoutReplyGivesItsSlotBack)
+{
+    RpcRuntime runtime(1);
+    auto owner = std::make_shared<int>(12);
+    std::weak_ptr<int> weak = owner;
+    auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                      work(
+                                              [owner](OperationContext& context) -> RpcResult<int>
+                                              {
+                                                  EXPECT_TRUE(context.tryBeginDispatch());
+                                                  SettledOnExit settled{context};
+                                                  throw thallium::timeout();
+                                              }));
+    owner.reset();
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_TRUE(result.may_have_dispatched);
+    EXPECT_FALSE(result.reply);
+    EXPECT_TRUE(eventually([&] { return weak.expired(); }));
+    // The worker empties the slot just after the caller returns.
+    RpcReservation slot;
+    ASSERT_TRUE(eventually(
+            [&]
+            {
+                slot = runtime.reserve(RpcDeadline::after(1s));
+                return static_cast<bool>(slot);
+            }));
+    auto next = runtime.invoke<int>(std::move(slot),
+                                    work(
+                                            [](OperationContext& context)
+                                            {
+                                                EXPECT_TRUE(context.tryBeginDispatch());
+                                                return confirmed(3);
+                                            }));
+    ASSERT_TRUE(next.reply);
+    EXPECT_EQ(*next.reply, 3);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+// A caller that issues its next call as soon as the previous one returned must
+// be admitted: the finished call's slot holds no work any more. The worker
+// that ran it may be sleeping between passes, so reserve() itself frees a slot
+// whose caller has taken its result. Without that, 193 to 198 of the 200 calls
+// were refused. A worker preempted for longer than reserve()'s short retry
+// between completing a call and publishing its slot can still cost a refusal,
+// so a few are allowed.
+TEST(RpcRuntime, BackToBackCallsOnOneSlotAreAdmitted)
+{
+    RpcRuntime runtime(1);
+    int refused = 0;
+    for(int i = 0; i < 200; ++i)
+    {
+        auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                          work(
+                                                  [i](OperationContext& context)
+                                                  {
+                                                      EXPECT_TRUE(context.tryBeginDispatch());
+                                                      return confirmed(i);
+                                                  }));
+        if(result.status == CL_ERR_RPC_CAPACITY)
+            ++refused;
+        else
+        {
+            EXPECT_EQ(result.status, CL_SUCCESS);
+            ASSERT_TRUE(result.reply);
+            EXPECT_EQ(*result.reply, i);
+        }
+    }
+    EXPECT_LE(refused, 2);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+// A full runtime retries for a few microseconds before it refuses, but never
+// past the call's deadline: a call whose deadline ends in the retry is told
+// its deadline passed, not that the runtime is full.
+TEST(RpcRuntime, FullRuntimeReportsTheDeadlineWhenItEndsFirst)
+{
+    RpcRuntime runtime(1);
+    auto held = runtime.reserve(RpcDeadline::after(1s));
+    ASSERT_TRUE(held);
+    // A deadline 20 us away: 1 ms from a start 980 us ago.
+    auto late =
+            runtime.reserve(RpcDeadline::fromStart(RpcDeadline::Clock::now() - std::chrono::microseconds(980), 1ms));
+    EXPECT_EQ(late.status(), CL_ERR_DEADLINE_EXCEEDED);
+    EXPECT_EQ(runtime.reserve(RpcDeadline::after(1s)).status(), CL_ERR_RPC_CAPACITY);
+    held = RpcReservation();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+// Callers freeing retired slots race the workers freeing the same slots; each
+// slot is freed once, so afterwards exactly capacity slots can be reserved.
+TEST(RpcRuntime, ConcurrentCallersFreeingRetiredSlotsKeepTheCountExact)
+{
+    RpcRuntime runtime(2);
+    std::atomic<int> answered{0};
+    std::vector<std::thread> callers;
+    for(int t = 0; t < 4; ++t)
+        callers.emplace_back(
+                [&]
+                {
+                    for(int i = 0; i < 300; ++i)
+                    {
+                        auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                                          work(
+                                                                  [](OperationContext& context)
+                                                                  {
+                                                                      EXPECT_TRUE(context.tryBeginDispatch());
+                                                                      return confirmed();
+                                                                  }));
+                        if(result.status == CL_SUCCESS)
+                            ++answered;
+                        else
+                            EXPECT_EQ(result.status, CL_ERR_RPC_CAPACITY);
+                    }
+                });
+    for(auto& caller: callers) caller.join();
+    EXPECT_GT(answered.load(), 0);
+    RpcReservation first, second;
+    ASSERT_TRUE(eventually(
+            [&]
+            {
+                if(!first)
+                    first = runtime.reserve(RpcDeadline::after(1s));
+                if(!second)
+                    second = runtime.reserve(RpcDeadline::after(1s));
+                return first && second;
+            }));
+    EXPECT_EQ(runtime.reserve(RpcDeadline::after(1s)).status(), CL_ERR_RPC_CAPACITY);
+    first = RpcReservation();
+    second = RpcReservation();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+// The mark covers only the forward before it: a later dispatch that returns
+// without its own mark keeps the work and its slot.
+TEST(RpcRuntime, LaterDispatchClearsTheSettledMark)
+{
+    RpcRuntime runtime(1);
+    auto owner = std::make_shared<int>(13);
+    std::weak_ptr<int> weak = owner;
+    auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                      work(
+                                              [owner](OperationContext& context) -> RpcResult<int>
+                                              {
+                                                  EXPECT_TRUE(context.tryBeginDispatch());
+                                                  context.markNativeSettled();
+                                                  EXPECT_TRUE(context.tryBeginDispatch());
+                                                  return {CL_ERR_OUTCOME_UNCONFIRMED, true, {}};
+                                              }));
+    owner.reset();
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_FALSE(weak.expired());
+    EXPECT_EQ(runtime.reserve(RpcDeadline::after(20ms)).status(), CL_ERR_RPC_CAPACITY);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(20ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+}
+
+// A caller that gave up before the settled forward returned does not change
+// that: the slot comes back when the work returns.
+TEST(RpcRuntime, SettledForwardAfterTheCallerExpiredGivesItsSlotBack)
+{
+    RpcRuntime runtime(1);
+    auto forward = std::make_shared<Gate>();
+    ReleaseGates cleanup{{forward}};
+    auto result = runtime.invoke<int>(RpcDeadline::after(50ms),
+                                      work(
+                                              [forward](OperationContext& context) -> RpcResult<int>
+                                              {
+                                                  EXPECT_TRUE(context.tryBeginDispatch());
+                                                  SettledOnExit settled{context};
+                                                  forward->block();
+                                                  return {CL_ERR_OUTCOME_UNCONFIRMED, true, {}};
+                                              }));
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_TRUE(result.may_have_dispatched);
+    EXPECT_EQ(runtime.reserve(RpcDeadline::after(20ms)).status(), CL_ERR_RPC_CAPACITY);
+    forward->release();
+    EXPECT_TRUE(eventually([&] { return static_cast<bool>(runtime.reserve(RpcDeadline::after(1s))); }));
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, ConcurrentCompletionAndCloseDrainEveryAdmittedOwner)
+{
+    for(int round = 0; round != 20; ++round)
+    {
+        RpcRuntime runtime;
+        auto gate = std::make_shared<Gate>();
+        ReleaseGates cleanup{{gate}};
+        auto active = std::async(std::launch::async,
+                                 [&runtime, gate]
+                                 {
+                                     return runtime.invoke<int>(RpcDeadline::after(1s),
+                                                                work(
+                                                                        [gate](OperationContext& context)
+                                                                        {
+                                                                            EXPECT_TRUE(context.tryBeginDispatch());
+                                                                            gate->block();
+                                                                            return confirmed();
+                                                                        }));
+                                 });
+        EXPECT_TRUE(gate->waitForEntry());
+        auto stopping = std::async(std::launch::async, [&runtime] { return runtime.drain(RpcDeadline::after(1s)); });
+        gate->release();
+        EXPECT_EQ(active.get().status, CL_SUCCESS);
+        EXPECT_EQ(stopping.get(), CL_SUCCESS);
+    }
+}
+
+namespace
+{
+struct EngineLease
+{
+    std::vector<char> endpointState = std::vector<char>(65537, 'q');
+};
+struct LifecycleState
+{
+    std::shared_ptr<Gate> construction = std::make_shared<Gate>();
+    std::shared_ptr<Gate> finalization = std::make_shared<Gate>();
+    std::weak_ptr<EngineLease> engine;
+    std::atomic<std::size_t> checksum{0};
+};
+struct LifecycleWork: OwnedRpcWork<int>
+{
+    std::shared_ptr<LifecycleState> state;
+    std::shared_ptr<EngineLease> engine;
+    explicit LifecycleWork(std::shared_ptr<LifecycleState> value)
+        : state(std::move(value))
+    {}
+    RpcResult<int> run(OperationContext&) override
+    {
+        state->construction->block();
+        engine = std::make_shared<EngineLease>();
+        state->engine = engine;
+        return {CL_SUCCESS, false, 1};
+    }
+    ~LifecycleWork() override
+    {
+        if(engine)
+        {
+            state->finalization->block();
+            std::size_t value = 0;
+            for(unsigned char byte: engine->endpointState) value += byte;
+            state->checksum.store(value);
+        }
+    }
+};
+std::size_t threadCount()
+{
+    return static_cast<std::size_t>(std::distance(std::filesystem::directory_iterator("/proc/self/task"),
+                                                  std::filesystem::directory_iterator{}));
+}
+} // namespace
+
+TEST(RpcRuntime, BootstrapAndFinalizationRetainEngineAfterHandleExpiry)
+{
+    auto runtime = std::make_unique<RpcRuntime>();
+    auto state = std::make_shared<LifecycleState>();
+    ReleaseGates cleanup{{state->construction, state->finalization}};
+    auto reservation = runtime->reserve(RpcDeadline::after(20ms));
+    ASSERT_TRUE(reservation);
+    auto result = runtime->invoke<int>(std::move(reservation), std::make_shared<LifecycleWork>(state));
+    EXPECT_EQ(result.status, CL_ERR_DEADLINE_EXCEEDED);
+    EXPECT_TRUE(state->construction->waitForEntry());
+    runtime.reset();
+    state->construction->release();
+    EXPECT_TRUE(state->finalization->waitForEntry());
+    EXPECT_FALSE(state->engine.expired());
+    state->finalization->release();
+    EXPECT_TRUE(eventually([&] { return state->engine.expired(); }));
+    EXPECT_EQ(state->checksum, 7405681u);
+}
+
+TEST(RpcRuntime, SuccessfulDrainReclaimsJoinableWorkers)
+{
+    auto before = threadCount();
+    for(int i = 0; i != 20; ++i)
+    {
+        RpcRuntime runtime;
+        EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+    }
+    // The only persistent addition is the single process-wide reaper.
+    EXPECT_TRUE(eventually([&] { return threadCount() <= before + 1; }));
+}
+
+namespace
+{
+void expectThreeChildFanout(bool reserveDispatch)
+{
+    RpcRuntime runtime(3);
+    auto firstGate = std::make_shared<Gate>();
+    auto secondGate = std::make_shared<Gate>();
+    ReleaseGates cleanup{{firstGate, secondGate}};
+    auto deadline = RpcDeadline::after(200ms);
+    auto first = runtime.reserve(deadline);
+    auto second = runtime.reserve(deadline);
+    auto third = runtime.reserve(deadline);
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+    ASSERT_TRUE(third);
+    EXPECT_EQ(runtime.reserve(deadline).status(), CL_ERR_RPC_CAPACITY);
+    auto silent = [reserveDispatch](std::shared_ptr<Gate> gate)
+    {
+        return work(
+                [gate, reserveDispatch](OperationContext& context)
+                {
+                    if(reserveDispatch && !context.tryBeginDispatch())
+                        return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                    gate->block();
+                    if(!reserveDispatch && !context.tryBeginDispatch())
+                        return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                    return confirmed();
+                });
+    };
+    auto pendingA = runtime.submit<int>(std::move(first), silent(firstGate));
+    auto pendingB = runtime.submit<int>(std::move(second), silent(secondGate));
+    ASSERT_TRUE(firstGate->waitForEntry());
+    ASSERT_TRUE(secondGate->waitForEntry());
+    auto thirdRan = std::make_shared<std::atomic<bool>>(false);
+    auto pendingC = runtime.submit<int>(std::move(third),
+                                        work(
+                                                [thirdRan](OperationContext& context)
+                                                {
+                                                    if(!context.tryBeginDispatch())
+                                                        return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                                                    thirdRan->store(true);
+                                                    return confirmed(91);
+                                                }));
+    EXPECT_TRUE(eventually([&] { return thirdRan->load(); }));
+    auto started = RpcDeadline::Clock::now();
+    // A/B consume one common deadline. C must still yield its earlier confirmed
+    // reply when collected after the shared deadline has already elapsed.
+    auto resultA = pendingA.wait();
+    auto resultB = pendingB.wait();
+    auto resultC = pendingC.wait();
+    EXPECT_LT(RpcDeadline::Clock::now() - started, 350ms);
+    EXPECT_EQ(resultA.status, reserveDispatch ? CL_ERR_OUTCOME_UNCONFIRMED : CL_ERR_DEADLINE_EXCEEDED);
+    EXPECT_EQ(resultB.status, reserveDispatch ? CL_ERR_OUTCOME_UNCONFIRMED : CL_ERR_DEADLINE_EXCEEDED);
+    ASSERT_TRUE(resultC.reply);
+    EXPECT_EQ(resultC.status, CL_SUCCESS);
+    EXPECT_EQ(*resultC.reply, 91);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(10ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+    firstGate->release();
+    secondGate->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+} // namespace
+
+TEST(RpcRuntime, ControlFanoutReachesThirdAfterTwoBlockedLookups) { expectThreeChildFanout(false); }
+
+TEST(RpcRuntime, ControlFanoutReachesThirdAfterTwoBlockedForwards) { expectThreeChildFanout(true); }
+
+TEST(RpcRuntime, PartialFanoutAdmissionFailsBeforeAnyChildDispatch)
+{
+    RpcRuntime runtime(3);
+    auto held = runtime.reserve(RpcDeadline::after(1s));
+    ASSERT_TRUE(held);
+    std::vector<RpcReservation> children;
+    for(int i = 0; i != 3; ++i)
+    {
+        auto token = runtime.reserve(RpcDeadline::after(1s));
+        if(!token)
+        {
+            EXPECT_EQ(token.status(), CL_ERR_RPC_CAPACITY);
+            break;
+        }
+        children.push_back(std::move(token));
+    }
+    EXPECT_EQ(children.size(), 2u);
+    auto forwarded = std::make_shared<std::atomic<int>>(0);
+    if(children.size() == 3)
+    {
+        for(auto& token: children)
+        {
+            auto pending = runtime.submit<int>(std::move(token),
+                                               work(
+                                                       [forwarded](OperationContext& context)
+                                                       {
+                                                           if(context.tryBeginDispatch())
+                                                               ++*forwarded;
+                                                           return confirmed();
+                                                       }));
+        }
+    }
+    children.clear();
+    held = {};
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+    EXPECT_EQ(*forwarded, 0);
+}
+
+TEST(RpcRuntime, RejectsInvalidCapacityBeforeCreatingThreads)
+{
+    auto before = threadCount();
+    for(auto capacity: {std::size_t{0}, std::size_t{256}, std::numeric_limits<std::size_t>::max()})
+        EXPECT_THROW({ RpcRuntime invalid(capacity); }, std::invalid_argument);
+    EXPECT_EQ(threadCount(), before);
+}
+
+TEST(RpcRuntime, ExplicitSingleCapacityRejectsSecondReservation)
+{
+    RpcRuntime runtime(1);
+    auto first = runtime.reserve(RpcDeadline::after(1s));
+    ASSERT_TRUE(first);
+    auto second = runtime.reserve(RpcDeadline::after(1s));
+    EXPECT_EQ(second.status(), CL_ERR_RPC_CAPACITY);
+    first = {};
+    second = {};
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, PendingSubmissionAndDropRetainBlockedLookupOwner)
+{
+    RpcRuntime runtime;
+    auto lookup = std::make_shared<Gate>();
+    ReleaseGates cleanup{{lookup}};
+    auto owner = std::make_shared<int>(17);
+    std::weak_ptr<int> weak = owner;
+    auto sent = std::make_shared<std::atomic<bool>>(false);
+    auto token = runtime.reserve(RpcDeadline::after(1s));
+    ASSERT_TRUE(token);
+    auto started = RpcDeadline::Clock::now();
+    auto pending = runtime.submit<int>(std::move(token),
+                                       work(
+                                               [lookup, owner, sent](OperationContext& context)
+                                               {
+                                                   lookup->block();
+                                                   EXPECT_EQ(*owner, 17);
+                                                   if(!context.tryBeginDispatch())
+                                                       return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                                                   sent->store(true);
+                                                   return confirmed();
+                                               }));
+    EXPECT_LT(RpcDeadline::Clock::now() - started, 100ms);
+    EXPECT_TRUE(lookup->waitForEntry());
+    owner.reset();
+    started = RpcDeadline::Clock::now();
+    pending = {};
+    EXPECT_LT(RpcDeadline::Clock::now() - started, 100ms);
+    EXPECT_FALSE(weak.expired());
+    lookup->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+    EXPECT_FALSE(*sent);
+    EXPECT_TRUE(weak.expired());
+}
+
+TEST(RpcRuntime, PendingWaitUsesOriginalDeadlineAndConsumesOnce)
+{
+    RpcRuntime runtime;
+    auto forward = std::make_shared<Gate>();
+    ReleaseGates cleanup{{forward}};
+    auto deadline = RpcDeadline::after(40ms);
+    auto token = runtime.reserve(deadline);
+    ASSERT_TRUE(token);
+    auto pending = runtime.submit<int>(std::move(token),
+                                       work(
+                                               [forward, deadline](OperationContext& context)
+                                               {
+                                                   EXPECT_EQ(context.deadline().expiresAt(), deadline.expiresAt());
+                                                   if(!context.tryBeginDispatch())
+                                                       return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                                                   forward->block();
+                                                   return confirmed();
+                                               }));
+    EXPECT_TRUE(forward->waitForEntry());
+    std::this_thread::sleep_until(deadline.expiresAt() + 10ms);
+    auto started = RpcDeadline::Clock::now();
+    auto result = pending.wait();
+    EXPECT_LT(RpcDeadline::Clock::now() - started, 30ms);
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_FALSE(result.reply);
+    EXPECT_EQ(pending.wait().status, CL_ERR_INVALID_ARG);
+    forward->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, PendingMoveTransfersOneResultConsumer)
+{
+    static_assert(!std::is_copy_constructible_v<RpcPending<int>>);
+    static_assert(!std::is_copy_assignable_v<RpcPending<int>>);
+    RpcRuntime runtime;
+    auto token = runtime.reserve(RpcDeadline::after(1s));
+    ASSERT_TRUE(token);
+    auto first = runtime.submit<int>(std::move(token),
+                                     work(
+                                             [](OperationContext& context)
+                                             {
+                                                 if(!context.tryBeginDispatch())
+                                                     return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                                                 return confirmed(89);
+                                             }));
+    auto second = std::move(first);
+    RpcPending<int> third;
+    third = std::move(second);
+    EXPECT_EQ(first.wait().status, CL_ERR_INVALID_ARG);
+    EXPECT_EQ(second.wait().status, CL_ERR_INVALID_ARG);
+    auto result = third.wait();
+    ASSERT_TRUE(result.reply);
+    EXPECT_EQ(*result.reply, 89);
+    EXPECT_EQ(third.wait().status, CL_ERR_INVALID_ARG);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, PendingMoveAssignmentAbandonsPreviousLookup)
+{
+    RpcRuntime runtime;
+    auto lookup = std::make_shared<Gate>();
+    ReleaseGates cleanup{{lookup}};
+    auto owner = std::make_shared<int>(31);
+    std::weak_ptr<int> weak = owner;
+    auto sent = std::make_shared<std::atomic<bool>>(false);
+    auto token = runtime.reserve(RpcDeadline::after(1s));
+    ASSERT_TRUE(token);
+    auto first = runtime.submit<int>(std::move(token),
+                                     work(
+                                             [lookup, owner, sent](OperationContext& context)
+                                             {
+                                                 lookup->block();
+                                                 if(!context.tryBeginDispatch())
+                                                     return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                                                 sent->store(true);
+                                                 return confirmed(*owner);
+                                             }));
+    EXPECT_TRUE(lookup->waitForEntry());
+    owner.reset();
+    auto secondToken = runtime.reserve(RpcDeadline::after(1s));
+    ASSERT_TRUE(secondToken);
+    auto second = runtime.submit<int>(std::move(secondToken),
+                                      work(
+                                              [](OperationContext& context)
+                                              {
+                                                  if(!context.tryBeginDispatch())
+                                                      return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                                                  return confirmed(53);
+                                              }));
+    first = std::move(second);
+    EXPECT_FALSE(weak.expired());
+    auto result = first.wait();
+    ASSERT_TRUE(result.reply);
+    EXPECT_EQ(*result.reply, 53);
+    lookup->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+    EXPECT_FALSE(*sent);
+    EXPECT_TRUE(weak.expired());
+}
+
+TEST(RpcRuntime, DroppedPendingAfterDispatchKeepsOwnerUntilLateReply)
+{
+    RpcRuntime runtime(1);
+    auto forward = std::make_shared<Gate>();
+    ReleaseGates cleanup{{forward}};
+    auto owner = std::make_shared<int>(67);
+    std::weak_ptr<int> weak = owner;
+    auto token = runtime.reserve(RpcDeadline::after(1s));
+    ASSERT_TRUE(token);
+    auto pending = runtime.submit<int>(std::move(token),
+                                       work(
+                                               [forward, owner](OperationContext& context)
+                                               {
+                                                   if(!context.tryBeginDispatch())
+                                                       return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                                                   forward->block();
+                                                   return confirmed(*owner);
+                                               }));
+    EXPECT_TRUE(forward->waitForEntry());
+    owner.reset();
+    pending = {};
+    EXPECT_FALSE(weak.expired());
+    EXPECT_EQ(runtime.reserve(RpcDeadline::after(1s)).status(), CL_ERR_RPC_CAPACITY);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(10ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+    forward->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+    EXPECT_TRUE(weak.expired());
+}
+
+TEST(RpcRuntime, DroppedPendingRetainsUnknownQuarantine)
+{
+    RpcRuntime runtime(1);
+    auto forward = std::make_shared<Gate>();
+    ReleaseGates cleanup{{forward}};
+    auto owner = std::make_shared<int>(71);
+    std::weak_ptr<int> weak = owner;
+    auto token = runtime.reserve(RpcDeadline::after(1s));
+    ASSERT_TRUE(token);
+    auto pending = runtime.submit<int>(std::move(token),
+                                       work(
+                                               [forward, owner](OperationContext& context)
+                                               {
+                                                   EXPECT_TRUE(context.tryBeginDispatch());
+                                                   forward->block();
+                                                   return RpcResult<int>{CL_ERR_OUTCOME_UNCONFIRMED, true, {}};
+                                               }));
+    EXPECT_TRUE(forward->waitForEntry());
+    owner.reset();
+    pending = {};
+    forward->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(20ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+    EXPECT_FALSE(weak.expired());
+}
+
+TEST(RpcRuntime, ExpiredPendingQueuesBlockingDestructionOffCaller)
+{
+    RpcRuntime runtime;
+    auto token = runtime.reserve(RpcDeadline::after(10ms));
+    ASSERT_TRUE(token);
+    auto destruction = std::make_shared<Gate>();
+    ReleaseGates cleanup{{destruction}};
+    std::this_thread::sleep_for(20ms);
+    auto started = RpcDeadline::Clock::now();
+    auto pending = runtime.submit<int>(std::move(token), std::make_shared<DestructionGateWork>(destruction));
+    pending = {};
+    EXPECT_LT(RpcDeadline::Clock::now() - started, 100ms);
+    EXPECT_TRUE(destruction->waitForEntry());
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(10ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+    destruction->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, ConfiguredCapacityReapsEveryWorker)
+{
+    auto before = threadCount();
+    RpcRuntime runtime(3);
+    EXPECT_GE(threadCount(), before + 3);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+    EXPECT_TRUE(eventually([&] { return threadCount() <= before + 1; }));
+}
+
+TEST(RpcRuntimeOwner, CallerDropCleansExactlyOnceOnExistingWorker)
+{
+    for(size_t capacity: {1u, 2u})
+    {
+        auto runtime = std::make_unique<RpcRuntime>(capacity);
+        auto calls = std::make_shared<std::atomic<unsigned>>(0);
+        auto owner = std::make_shared<int>(17);
+        std::weak_ptr<int> weak = owner;
+        auto caller = std::this_thread::get_id();
+        auto offCaller = std::make_shared<std::atomic<bool>>(false);
+        runtime->retainOwner(owner,
+                             [calls, offCaller, caller]
+                             {
+                                 *offCaller = std::this_thread::get_id() != caller;
+                                 ++*calls;
+                             });
+        owner.reset();
+        runtime.reset();
+        EXPECT_TRUE(eventually([&] { return calls->load() == 1 && weak.expired(); }));
+        EXPECT_TRUE(offCaller->load());
+        EXPECT_EQ(1u, calls->load());
+    }
+}
+TEST(RpcRuntimeOwner, BlockingCleanupStaysChargedAndDoesNotBlockCallerOrOtherOwners)
+{
+    RpcRuntime runtime(2);
+    auto gate = std::make_shared<Gate>();
+    ReleaseGates cleanup{{gate}};
+    auto owner = std::make_shared<int>(5);
+    std::weak_ptr<int> weak = owner;
+    runtime.retainOwner(owner, [gate] { gate->block(); });
+    owner.reset();
+    EXPECT_EQ(CL_ERR_SHUTDOWN_INCOMPLETE, runtime.drain(RpcDeadline::after(20ms)));
+    EXPECT_TRUE(gate->waitForEntry());
+    EXPECT_FALSE(weak.expired());
+    EXPECT_EQ(CL_ERR_RPC_CAPACITY, runtime.reserve(RpcDeadline::after(1s)).status());
+    RpcRuntime independent;
+    EXPECT_EQ(CL_SUCCESS, independent.drain(RpcDeadline::after(1s)));
+    gate->release();
+    EXPECT_EQ(CL_SUCCESS, runtime.drain(RpcDeadline::after(1s)));
+    EXPECT_TRUE(weak.expired());
+}
+TEST(RpcRuntimeOwner, ThrowingCleanupRetainsOwnerAndReportsIncomplete)
+{
+    auto runtime = std::make_unique<RpcRuntime>(1);
+    auto owner = std::make_shared<int>(9);
+    std::weak_ptr<int> weak = owner;
+    auto calls = std::make_shared<std::atomic<unsigned>>(0);
+    runtime->retainOwner(owner,
+                         [calls]
+                         {
+                             ++*calls;
+                             throw std::runtime_error("not settled");
+                         });
+    owner.reset();
+    EXPECT_EQ(CL_ERR_SHUTDOWN_INCOMPLETE, runtime->drain(RpcDeadline::after(20ms)));
+    EXPECT_TRUE(eventually([&] { return calls->load() == 1; }));
+    EXPECT_FALSE(weak.expired());
+    runtime.reset();
+    EXPECT_FALSE(weak.expired());
+    EXPECT_EQ(1u, calls->load());
+}
+TEST(RpcRuntimeOwner, CleanupWaitsForNormalWorkAndRepeatedDrainDoesNotRepeatCleanup)
+{
+    for(size_t capacity: {1u, 2u})
+    {
+        RpcRuntime runtime(capacity);
+        auto gate = std::make_shared<Gate>();
+        ReleaseGates cleanup{{gate}};
+        auto calls = std::make_shared<std::atomic<unsigned>>(0);
+        runtime.retainOwner(std::make_shared<int>(3), [calls] { ++*calls; });
+        auto pending = runtime.submit<int>(runtime.reserve(RpcDeadline::after(1s)),
+                                           work(
+                                                   [gate](OperationContext&)
+                                                   {
+                                                       gate->block();
+                                                       return RpcResult<int>{0, false, 1};
+                                                   }));
+        ASSERT_TRUE(gate->waitForEntry());
+        EXPECT_EQ(CL_ERR_SHUTDOWN_INCOMPLETE, runtime.drain(RpcDeadline::after(10ms)));
+        EXPECT_EQ(0u, calls->load());
+        gate->release();
+        pending.wait();
+        EXPECT_EQ(CL_SUCCESS, runtime.drain(RpcDeadline::after(1s)));
+        EXPECT_EQ(CL_SUCCESS, runtime.drain(RpcDeadline::after(1s)));
+        EXPECT_EQ(1u, calls->load());
+    }
+}
+
+TEST(RpcRuntimeOwner, ConcurrentDrainClaimsCleanupExactlyOnce)
+{
+    for(unsigned iteration = 0; iteration < 64; ++iteration)
+    {
+        RpcRuntime runtime(1 + iteration % 2);
+        auto calls = std::make_shared<std::atomic<unsigned>>(0);
+        runtime.retainOwner(std::make_shared<int>(1), [calls] { ++*calls; });
+        auto first = std::async(std::launch::async, [&] { return runtime.drain(RpcDeadline::after(1s)); });
+        auto second = std::async(std::launch::async, [&] { return runtime.drain(RpcDeadline::after(1s)); });
+        EXPECT_EQ(CL_SUCCESS, first.get());
+        EXPECT_EQ(CL_SUCCESS, second.get());
+        EXPECT_EQ(1u, calls->load());
+    }
+}
+
+
+namespace
+{
+template <class T>
+auto handoff(T& pending, int) -> decltype(pending.releaseToRuntime(), void())
+{
+    pending.releaseToRuntime();
+}
+template <class T>
+void handoff(T& pending, long)
+{
+    pending = T{};
+}
+template <class T>
+auto narrow(T& reservation, RpcDeadline const& deadline, int) -> decltype(reservation.narrowDeadline(deadline), void())
+{
+    reservation.narrowDeadline(deadline);
+}
+template <class T>
+void narrow(T&, RpcDeadline const&, long)
+{}
+} // namespace
+
+TEST(RpcRuntime, ServerHandoffDoesNotAbandonBeforeDispatch)
+{
+    RpcRuntime runtime(1);
+    auto gate = std::make_shared<Gate>();
+    ReleaseGates release{{gate}};
+    std::atomic<bool> dispatched{false};
+    auto pending = runtime.submit<int>(runtime.reserve(RpcDeadline::after(1s)),
+                                       work(
+                                               [&](OperationContext& context)
+                                               {
+                                                   gate->block();
+                                                   dispatched = context.tryBeginDispatch();
+                                                   return RpcResult<int>{CL_SUCCESS, dispatched, 1};
+                                               }));
+    ASSERT_TRUE(gate->waitForEntry());
+    handoff(pending, 0);
+    gate->release();
+    EXPECT_TRUE(eventually([&] { return dispatched.load(); }));
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, ServerHandoffStillExpiresBeforeDispatch)
+{
+    RpcRuntime runtime(1);
+    auto gate = std::make_shared<Gate>();
+    ReleaseGates release{{gate}};
+    std::atomic<bool> dispatched{false};
+    auto pending = runtime.submit<int>(runtime.reserve(RpcDeadline::after(30ms)),
+                                       work(
+                                               [&](OperationContext& context)
+                                               {
+                                                   gate->block();
+                                                   dispatched = context.tryBeginDispatch();
+                                                   return RpcResult<int>{CL_SUCCESS, dispatched, 0};
+                                               }));
+    ASSERT_TRUE(gate->waitForEntry());
+    handoff(pending, 0);
+    std::this_thread::sleep_for(40ms);
+    gate->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+    EXPECT_FALSE(dispatched);
+}
+
+TEST(RpcRuntime, ServerHandoffKeepsUnknownWorkCharged)
+{
+    RpcRuntime runtime(1);
+    auto gate = std::make_shared<Gate>();
+    ReleaseGates release{{gate}};
+    auto pending = runtime.submit<int>(runtime.reserve(RpcDeadline::after(1s)),
+                                       work(
+                                               [&](OperationContext& context)
+                                               {
+                                                   gate->block();
+                                                   if(!context.tryBeginDispatch())
+                                                       return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, 0};
+                                                   return RpcResult<int>{CL_ERR_OUTCOME_UNCONFIRMED, true, {}};
+                                               }));
+    ASSERT_TRUE(gate->waitForEntry());
+    handoff(pending, 0);
+    gate->release();
+    std::this_thread::sleep_for(20ms);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(30ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+}
+
+TEST(RpcRuntime, NarrowedReservationBoundsTheIndependentWait)
+{
+    RpcRuntime runtime(1);
+    auto gate = std::make_shared<Gate>();
+    ReleaseGates release{{gate}};
+    auto reservation = runtime.reserve(RpcDeadline::after(600ms));
+    auto started = RpcDeadline::Clock::now();
+    narrow(reservation, RpcDeadline::after(40ms), 0);
+    auto pending = runtime.submit<int>(std::move(reservation),
+                                       work(
+                                               [&](OperationContext& context)
+                                               {
+                                                   if(!context.tryBeginDispatch())
+                                                       return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, 0};
+                                                   gate->block();
+                                                   return confirmed();
+                                               }));
+    ASSERT_TRUE(gate->waitForEntry());
+    auto result = pending.wait();
+    auto elapsed = RpcDeadline::Clock::now() - started;
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_LT(elapsed, 250ms);
+    gate->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, NarrowingCannotExtendTheOriginalReservation)
+{
+    RpcRuntime runtime(1);
+    auto gate = std::make_shared<Gate>();
+    ReleaseGates release{{gate}};
+    auto reservation = runtime.reserve(RpcDeadline::after(40ms));
+    narrow(reservation, RpcDeadline::after(600ms), 0);
+    auto started = RpcDeadline::Clock::now();
+    auto pending = runtime.submit<int>(std::move(reservation),
+                                       work(
+                                               [&](OperationContext& context)
+                                               {
+                                                   if(!context.tryBeginDispatch())
+                                                       return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, 0};
+                                                   gate->block();
+                                                   return confirmed();
+                                               }));
+    ASSERT_TRUE(gate->waitForEntry());
+    EXPECT_EQ(pending.wait().status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_LT(RpcDeadline::Clock::now() - started, 250ms);
+    gate->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}

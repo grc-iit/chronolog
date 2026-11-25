@@ -37,10 +37,10 @@ def reader_client():
     # create ClientPortalServiceConf instance with the connection credentials to ChronoVisor ClientPortalService
 
     clientConf = py_chronolog_client.ClientPortalServiceConf(
-        "ofi+sockets", "127.0.0.1", 5555, 55
+        "ofi+tcp", "127.0.0.1", 5555, 55
     )
     clientQueryConf = py_chronolog_client.ClientQueryServiceConf(
-        "ofi+sockets", "127.0.0.1", 5557, 57
+        "ofi+tcp", "127.0.0.1", 5557, 57
     )
 
     # instantiate ChronoLog Client object

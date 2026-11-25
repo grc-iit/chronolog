@@ -1,189 +1,83 @@
 #ifndef DataStoreAdmin_CLIENT_H
 #define DataStoreAdmin_CLIENT_H
-
-#include <cstdint>
-#include <iostream>
-#include <vector>
-
-#include <thallium.hpp>
+#include <VisorAdminRuntime.h>
+#include <chronolog_types.h>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
-
-#include <chrono_monitor.h>
-#include <chronolog_errcode.h>
-#include <chronolog_types.h>
-#include <ServiceId.h>
-
-namespace tl = thallium;
-
 namespace chronolog
 {
-
-class DataStoreAdminClient
+// Immutable descriptor. Lookup and native callable handles are created only inside
+// admitted owned work; registration does not perform network work under its lock.
+class DataStoreAdminClient: public std::enable_shared_from_this<DataStoreAdminClient>
 {
-
 public:
-    static DataStoreAdminClient* CreateDataStoreAdminClient(tl::engine& tl_engine,
-                                                            std::string const& collection_service_addr,
-                                                            uint16_t collection_provider_id)
+    static std::shared_ptr<DataStoreAdminClient>
+    CreateDataStoreAdminClient(std::shared_ptr<VisorAdminRuntime> owner, std::string address, uint16_t provider)
     {
-        DataStoreAdminClient* adminClient = nullptr;
-        try
-        {
-            adminClient = new DataStoreAdminClient(tl_engine, collection_service_addr, collection_provider_id);
-        }
-        catch(tl::exception const& ex)
-        {
-            LOG_ERROR("[DataStoreAdminClient] Failed to create DataStoreAdminClient");
-        }
-        return adminClient;
+        return std::shared_ptr<DataStoreAdminClient>(
+                new DataStoreAdminClient(std::move(owner), std::move(address), provider));
     }
-
-
-    int collection_is_available()
+    rpc::RpcResult<int> execute(rpc::OperationContext& context, AdminArguments const& args, rpc::RpcCallState& native)
     {
-        int available = 0;
-        try
+        auto binding = owner_->provision(args.action, provider_, context.deadline());
+        if(binding != CL_SUCCESS)
+            return {binding, false, std::nullopt};
+        auto endpoint = owner_->lookup->resolve(*owner_->engine, address_);
+        auto remote = owner_->procedures[static_cast<std::size_t>(args.action)];
+        native.bind(remote, endpoint, provider_);
+        auto attempt = context.deadline().cappedAttempt(std::chrono::milliseconds(owner_->policy.attempt_ms));
+        if(!attempt || !context.tryBeginDispatch())
+            return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+        // Every case below returns, or throws, only after Mercury is done
+        // with the forward.
+        rpc::SettledOnExit settled{context};
+        int reply;
+        switch(args.action)
         {
-            available = collection_service_available.on(service_handle)();
-            LOG_DEBUG("[DataStoreAdminClient] Service available: {}", available);
+            case AdminAction::Start:
+                reply = native.callable().timed(*attempt, args.chronicle, args.story, args.id, args.start);
+                break;
+            case AdminAction::StartPlayer:
+                reply = native.callable()
+                                .timed(*attempt, args.chronicle, args.story, args.id, args.start, args.keepers);
+                break;
+            case AdminAction::Stop:
+                reply = native.callable().timed(*attempt, args.id);
+                break;
+            case AdminAction::DestroyStory:
+                reply = native.callable().timed(*attempt, args.chronicle, args.story, args.id);
+                break;
+            case AdminAction::DestroyChronicle:
+                reply = native.callable().timed(*attempt, args.chronicle);
+                break;
+            case AdminAction::Shutdown:
+                // The collector's real join can outlast one caller. Keep this
+                // original native continuation charged until its actual ACK.
+                reply = native.callable()();
+                break;
+            default:
+                reply = native.callable().timed(*attempt);
+                break;
         }
-        catch(tl::exception const& ex)
-        {
-            LOG_ERROR("[DataStoreAdminClient] Service unavailable: {}", available);
-        }
-        return available;
+        native.clearKnown();
+        // Scalar replies have no remote access to caller memory. Native RPC
+        // registration belongs to the engine and is never deregistered per call.
+        return {reply, true, reply};
     }
-
-    int shutdown_collection()
-    {
-        int status = chronolog::CL_ERR_UNKNOWN;
-        try
-        {
-            LOG_INFO("[DataStoreAdminClient] Shutdown");
-            status = shutdown_data_collection.on(service_handle)();
-        }
-        catch(tl::exception const& ex)
-        {}
-        return status;
-    }
-
-    int send_start_story_recording(ChronicleName const& chronicle_name,
-                                   StoryName const& story_name,
-                                   StoryId const& story_id,
-                                   uint64_t start_time)
-    {
-        int status = chronolog::CL_ERR_UNKNOWN;
-        try
-        {
-            LOG_DEBUG("[DataStoreAdminClient] START Story Recording for StoryID={}", story_id);
-            status = start_story_recording.on(service_handle)(chronicle_name, story_name, story_id, start_time);
-        }
-        catch(tl::exception const& ex)
-        {}
-        return status;
-    }
-
-    // Player variant of the story-start notification: also carries the
-    // story's keeper roster (recording-service identities) so the player can
-    // fan replay hot fetches out to the keepers on demand.
-    int send_start_story_recording_with_keepers(ChronicleName const& chronicle_name,
-                                                StoryName const& story_name,
-                                                StoryId const& story_id,
-                                                uint64_t start_time,
-                                                std::vector<ServiceId> const& keeper_services)
-    {
-        int status = chronolog::CL_ERR_UNKNOWN;
-        try
-        {
-            LOG_DEBUG("[DataStoreAdminClient] START Story Recording (with {} keeper(s)) for StoryID={}",
-                      keeper_services.size(),
-                      story_id);
-            status = start_story_recording_with_keepers.on(
-                    service_handle)(chronicle_name, story_name, story_id, start_time, keeper_services);
-        }
-        catch(tl::exception const& ex)
-        {}
-        return status;
-    }
-
-    int send_stop_story_recording(StoryId const& story_id)
-    {
-        int status = chronolog::CL_ERR_UNKNOWN;
-        try
-        {
-            LOG_DEBUG("[DataStoreAdminClient] STOP Story Recording for StoryId={}", story_id);
-            status = stop_story_recording.on(service_handle)(story_id);
-        }
-        catch(tl::exception const& ex)
-        {}
-        return status;
-    }
-
-    int send_destroy_story(ChronicleName const& chronicle_name, StoryName const& story_name, StoryId const& story_id)
-    {
-        int status = chronolog::CL_ERR_UNKNOWN;
-        try
-        {
-            LOG_DEBUG("[DataStoreAdminClient] DESTROY Story for ChronicleName={}, StoryName={}, StoryId={}",
-                      chronicle_name,
-                      story_name,
-                      story_id);
-            status = destroy_story.on(service_handle)(chronicle_name, story_name, story_id);
-        }
-        catch(tl::exception const& ex)
-        {}
-        return status;
-    }
-
-    int send_destroy_chronicle(ChronicleName const& chronicle_name)
-    {
-        int status = chronolog::CL_ERR_UNKNOWN;
-        try
-        {
-            LOG_DEBUG("[DataStoreAdminClient] DESTROY Chronicle for ChronicleName={}", chronicle_name);
-            status = destroy_chronicle.on(service_handle)(chronicle_name);
-        }
-        catch(tl::exception const& ex)
-        {}
-        return status;
-    }
-
-    // No deregister(): every DataStoreAdminClient on this engine defines the same
-    // RPC names and so shares their IDs. Deregistering them here took them away
-    // from the clients of the other keepers, graphers and players (#743); engine
-    // finalize releases them.
-    ~DataStoreAdminClient() = default;
+    int shutdown_collection(std::shared_ptr<KeeperRegistry> registry, rpc::RpcDeadline const& deadline);
 
 private:
-    std::string service_addr;           // na address of Keeper/Grapher/Player Collection Service
-    uint16_t service_provider_id;       // Keeper/Grapher/Player CollectionService provider id
-    tl::provider_handle service_handle; //provider_handle for remote collector service
-    tl::remote_procedure collection_service_available;
-    tl::remote_procedure shutdown_data_collection;
-    tl::remote_procedure start_story_recording;
-    tl::remote_procedure start_story_recording_with_keepers;
-    tl::remote_procedure stop_story_recording;
-    tl::remote_procedure destroy_story;
-    tl::remote_procedure destroy_chronicle;
-
-    // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    DataStoreAdminClient(tl::engine& tl_engine,
-                         std::string const& collection_service_addr,
-                         uint16_t collection_provider_id)
-        : service_addr(collection_service_addr)
-        , service_provider_id(collection_provider_id)
-        , service_handle(tl_engine.lookup(collection_service_addr), collection_provider_id)
-    {
-        collection_service_available = tl_engine.define("collection_service_available");
-        shutdown_data_collection = tl_engine.define("shutdown_data_collection");
-        start_story_recording = tl_engine.define("start_story_recording");
-        start_story_recording_with_keepers = tl_engine.define("start_story_recording_with_keepers");
-        stop_story_recording = tl_engine.define("stop_story_recording");
-        destroy_story = tl_engine.define("destroy_story");
-        destroy_chronicle = tl_engine.define("destroy_chronicle");
-    }
+    friend class AdminWork;
+    DataStoreAdminClient(std::shared_ptr<VisorAdminRuntime> owner, std::string address, uint16_t provider)
+        : owner_(std::move(owner))
+        , address_(std::move(address))
+        , provider_(provider)
+    {}
+    std::shared_ptr<VisorAdminRuntime> owner_;
+    std::string address_;
+    uint16_t provider_;
+    std::timed_mutex shutdownMutex_;
+    std::shared_ptr<AdminCompletion> shutdown_;
 };
 } // namespace chronolog
-
 #endif
