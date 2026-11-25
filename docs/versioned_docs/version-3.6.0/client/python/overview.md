@@ -22,7 +22,7 @@ The **Python Client** is a [pybind11](https://pybind11.readthedocs.io/) binding 
    ```bash
    export PYTHONPATH=/path/to/chronolog/lib:$PYTHONPATH
    ```
-3. Run Python from ChronoLog's Spack environment, `/path/to/ChronoLog/.spack-env/view/bin/python3`. The module is built for that Python (3.14 on the 3.5.0 stack), and no other Python can import it. Its library paths are set at install, so it needs no `LD_LIBRARY_PATH`, and its file name needs no symbolic link.
+3. Run Python from ChronoLog's Spack environment, `/path/to/ChronoLog/.spack-env/view/bin/python3`. The module is built for that Python (3.14 on the Spack v1.2.2 stack of 3.5.0 and newer), and no other Python can import it. Its library paths are set at install, so it needs no `LD_LIBRARY_PATH`, and its file name needs no symbolic link.
 
 ### Client Modes
 

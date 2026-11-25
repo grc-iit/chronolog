@@ -16,7 +16,7 @@ The Client API section documents every interface available for interacting with 
 | CLI Tool | Shell | Admin tasks, quick tests, and scripted workflows | [CLI Tool](./cli/overview.md) |
 
 :::warning
-All three interfaces use the same C++ client library, so a client of any kind built against ChronoLog 3.4.0 or older cannot reach 3.5.0 servers, and a 3.5.0 client cannot reach older servers: the request gets no answer and no error. Build clients and servers from the same version.
+All three interfaces use the same C++ client library, so a client of any kind built against ChronoLog 3.4.0 or older cannot reach 3.5.0 or newer servers, and a newer client cannot reach 3.4.0 or older servers: the request gets no answer and no error. Build clients and servers from the same version.
 :::
 
 ### C++ Client

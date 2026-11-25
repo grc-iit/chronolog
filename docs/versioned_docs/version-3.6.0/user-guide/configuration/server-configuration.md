@@ -143,8 +143,8 @@ before it confirms a window written, and reads it before each archive read.
 It also helps to make the grapher's `story_chunk_duration_secs` a multiple of the keeper's (30 and
 10), so that a keeper's chunk does not straddle two grapher windows.
 
-A client waits up to 180 s for a replay (fixed in the client library). A player gives each keeper
-5 s to answer before it returns a partial result, so this leaves the archive read most of that time.
+A client waits up to its `replay_ms` for a replay (180 s by default; see
+[Client Configuration](./client-configuration.md#rpcpolicy)). A player gives each keeper its `RpcPolicy.attempt_ms` (5 s) to answer before it returns a partial result, so this leaves the archive read most of that time.
 
 ### `WAL` — keeper write-ahead log {#wal--keeper-write-ahead-log}
 
