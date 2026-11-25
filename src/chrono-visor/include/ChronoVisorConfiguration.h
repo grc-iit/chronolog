@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <json-c/json.h>
 #include <sstream>
+#include <string>
 
 #include <ConfigurationBlocks.h>
 
@@ -26,6 +27,9 @@ struct VisorConfiguration
     // client requests and the visor's calls to graphers, keepers and players
     // all hold one while they run. 1-255.
     size_t RPC_SLOTS = 32;
+    // SQLite catalog file. A relative path is resolved against the visor's
+    // working directory.
+    std::string CATALOG_DB_PATH = "visor/catalog.sqlite";
 
     VisorConfiguration()
     {
@@ -51,7 +55,7 @@ struct VisorConfiguration
                ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() +
                ", VISOR_LOG: " + VISOR_LOG_CONF.to_String() +
                ", DELAYED_DATA_ADMIN_EXIT_IN_SECS: " + std::to_string(DELAYED_DATA_ADMIN_EXIT_IN_SECS) +
-               ", RPC_SLOTS: " + std::to_string(RPC_SLOTS) + "]";
+               ", RPC_SLOTS: " + std::to_string(RPC_SLOTS) + ", CATALOG_DB_PATH: " + CATALOG_DB_PATH + "]";
     }
 };
 

@@ -13,7 +13,8 @@
 
 namespace chl = chronolog;
 
-ChronicleMetaDirectory::ChronicleMetaDirectory()
+ChronicleMetaDirectory::ChronicleMetaDirectory(chl::VisorCatalogStore& store)
+    : store_(store)
 {
     LOG_DEBUG("[ChronicleMetaDirectory] Constructor is called. Object created at {} in thread PID={}",
               static_cast<const void*>(this),
@@ -25,6 +26,41 @@ ChronicleMetaDirectory::~ChronicleMetaDirectory()
 {
     for(auto& entry: *chronicleMap_) delete entry.second;
     delete chronicleMap_;
+}
+
+int ChronicleMetaDirectory::load(chl::CatalogSnapshot const& snapshot)
+{
+    std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
+    if(!chronicleMap_->empty())
+    {
+        LOG_ERROR("[ChronicleMetaDirectory] Refusing to load the catalog into a directory that is not empty");
+        return chronolog::CL_ERR_UNKNOWN;
+    }
+    for(auto const& row: snapshot.chronicles)
+    {
+        auto* pChronicle = new Chronicle();
+        pChronicle->setName(row.name);
+        pChronicle->setCid(row.id);
+        chronicleMap_->emplace(row.id, pChronicle);
+    }
+    for(auto const& row: snapshot.stories)
+    {
+        auto chronicleRecord = chronicleMap_->find(chl::catalogChronicleIdOf(row.chronicle));
+        if(chronicleRecord == chronicleMap_->end() ||
+           chronicleRecord->second->addStory(row.story).first != chronolog::CL_SUCCESS)
+        {
+            LOG_ERROR("[ChronicleMetaDirectory] Cannot load StoryName={} of ChronicleName={} from the catalog",
+                      row.story,
+                      row.chronicle);
+            for(auto& entry: *chronicleMap_) delete entry.second;
+            chronicleMap_->clear();
+            return chronolog::CL_ERR_UNKNOWN;
+        }
+    }
+    LOG_DEBUG("[ChronicleMetaDirectory] Loaded {} chronicles and {} stories from the catalog",
+              snapshot.chronicles.size(),
+              snapshot.stories.size());
+    return chronolog::CL_SUCCESS;
 }
 
 /**
@@ -46,6 +82,12 @@ int ChronicleMetaDirectory::create_chronicle(const std::string& name)
     {
         LOG_WARNING("[ChronicleMetaDirectory] A Chronicle with the same ChronicleName={} already exists", name.c_str());
         return chronolog::CL_ERR_CHRONICLE_EXISTS;
+    }
+    int stored = store_.insertChronicle(cid, name);
+    if(stored != chronolog::CL_SUCCESS)
+    {
+        LOG_ERROR("[ChronicleMetaDirectory] Cannot store ChronicleName={} in the catalog: {}", name.c_str(), stored);
+        return chronolog::CL_ERR_UNKNOWN;
     }
     auto* pChronicle = new Chronicle();
     pChronicle->setName(name);
@@ -113,7 +155,16 @@ int ChronicleMetaDirectory::destroy_chronicle(const std::string& name)
                       name.c_str());
             return chronolog::CL_ERR_UNKNOWN;
         }
-        /* No Stories in Chronicle is acquired, ready to destroy */
+        /* No Stories in Chronicle is acquired, ready to destroy. A row already
+         * gone from the catalog counts as deleted. */
+        int stored = store_.deleteChronicle(cid);
+        if(stored != chronolog::CL_SUCCESS && stored != chronolog::CL_ERR_NOT_EXIST)
+        {
+            LOG_ERROR("[ChronicleMetaDirectory] Cannot delete ChronicleName={} from the catalog: {}",
+                      name.c_str(),
+                      stored);
+            return chronolog::CL_ERR_UNKNOWN;
+        }
         delete pChronicle;
         auto nErased = chronicleMap_->erase(cid);
         if(nErased == 1)
@@ -177,6 +228,18 @@ int ChronicleMetaDirectory::destroy_story(std::string const& chronicle_name, con
             }
             return chronolog::CL_ERR_ACQUIRED;
         }
+        if(pStory->getAcquisitionCount() != 0)
+            return chronolog::CL_ERR_ACQUIRED;
+        /* A row already gone from the catalog counts as deleted */
+        int stored = store_.deleteStory(sid);
+        if(stored != chronolog::CL_SUCCESS && stored != chronolog::CL_ERR_NOT_EXIST)
+        {
+            LOG_ERROR("[ChronicleMetaDirectory] Cannot delete StoryName={} in ChronicleName={} from the catalog: {}",
+                      story_name.c_str(),
+                      chronicle_name.c_str(),
+                      stored);
+            return chronolog::CL_ERR_UNKNOWN;
+        }
         /* Ask the Chronicle to destroy the Story */
         auto res = pChronicle->removeStory(chronicle_name, story_name);
         if(res != chronolog::CL_SUCCESS)
@@ -225,6 +288,20 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const& client_id,
         return chronolog::CL_ERR_NOT_EXIST;
     }
     Chronicle* pChronicle = chronicleMapRecord->second;
+    /* A new Story is stored in the catalog before it is added */
+    if(!pChronicle->hasStory(story_name))
+    {
+        int stored =
+                store_.insertStory(Chronicle::storyIdOf(chronicle_name, story_name), cid, chronicle_name, story_name);
+        if(stored != chronolog::CL_SUCCESS)
+        {
+            LOG_ERROR("[ChronicleMetaDirectory] Cannot store StoryName={} in ChronicleName={} in the catalog: {}",
+                      story_name.c_str(),
+                      chronicle_name.c_str(),
+                      stored);
+            return chronolog::CL_ERR_UNKNOWN;
+        }
+    }
     /* Then check if Story already_acquired_by_this_client, fail if false */
     auto ret = pChronicle->addStory(story_name);
     if(ret.first != chronolog::CL_SUCCESS)
@@ -473,6 +550,40 @@ int ChronicleMetaDirectory::release_all_acquired_stories(chl::ClientId const& cl
         }
     }
 
+    return chronolog::CL_SUCCESS;
+}
+
+int ChronicleMetaDirectory::set_chronicle_destroy_pending(std::string const& chronicle_name, bool pending)
+{
+    std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
+    int stored = store_.setChronicleDestroyPending(chl::catalogChronicleIdOf(chronicle_name), pending);
+    if(stored != chronolog::CL_SUCCESS)
+    {
+        LOG_ERROR("[ChronicleMetaDirectory] Cannot set destroy_pending={} on ChronicleName={} in the catalog: {}",
+                  pending,
+                  chronicle_name.c_str(),
+                  stored);
+        return chronolog::CL_ERR_UNKNOWN;
+    }
+    return chronolog::CL_SUCCESS;
+}
+
+int ChronicleMetaDirectory::set_story_destroy_pending(std::string const& chronicle_name,
+                                                      std::string const& story_name,
+                                                      bool pending)
+{
+    std::lock_guard<std::mutex> chronicleMapLock(g_chronicleMetaDirectoryMutex_);
+    int stored = store_.setStoryDestroyPending(Chronicle::storyIdOf(chronicle_name, story_name), pending);
+    if(stored != chronolog::CL_SUCCESS)
+    {
+        LOG_ERROR("[ChronicleMetaDirectory] Cannot set destroy_pending={} on StoryName={} in ChronicleName={} in the "
+                  "catalog: {}",
+                  pending,
+                  story_name.c_str(),
+                  chronicle_name.c_str(),
+                  stored);
+        return chronolog::CL_ERR_UNKNOWN;
+    }
     return chronolog::CL_SUCCESS;
 }
 

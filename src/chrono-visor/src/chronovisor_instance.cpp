@@ -1,11 +1,14 @@
 #include <signal.h>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <cmd_arg_parse.h>
 #include <KeeperRegistry.h>
 #include <VisorClientPortal.h>
 #include <ConfigurationManager.h>
 #include <ChronoVisorConfiguration.h>
+#include <SqliteCatalogStore.h>
+#include <WalMountCheck.h>
 #include <private/LifecycleStep.h>
 #include <private/ServiceLifecycle.h>
 #include <private/LifecyclePublisher.h>
@@ -25,20 +28,47 @@ std::string address(chl::RPCProviderConf const& conf)
 {
     return conf.PROTO_CONF + "://" + conf.IP + ":" + std::to_string(conf.BASE_PORT);
 }
+// Warns when the catalog database would be on NFS, where SQLite's locking and
+// fsync are unreliable. The visor starts either way. The directory may not
+// exist yet, so the nearest existing ancestor is inspected.
+void check_catalog_mount(std::string const& catalog_db_path)
+{
+    std::string const dir = chl::nearestExistingDirectory(catalog_db_path);
+    chl::WalMountInfo info;
+    int err = chl::inspectWalDirectory(dir, info);
+    if(err != 0)
+    {
+        LOG_WARNING("[ChronoVisor] Cannot inspect the file system of catalog directory {}: {}",
+                    dir,
+                    std::strerror(err));
+        return;
+    }
+    if(info.fs_name == "nfs")
+    {
+        LOG_WARNING("[ChronoVisor] Catalog database {} is on nfs: the catalog must be on a local disk, because "
+                    "SQLite's file locking and fsync are not reliable over NFS",
+                    catalog_db_path);
+    }
+}
 struct VisorData
 {
     chl::VisorConfiguration conf;
     std::shared_ptr<rpc::NativeProcessGeneration> generation = std::make_shared<rpc::NativeProcessGeneration>(2);
     std::array<std::unique_ptr<rpc::NativeMidRuntime>, 2> mids;
     std::shared_ptr<chl::KeeperRegistry> registry;
+    std::shared_ptr<chl::SqliteCatalogStore> catalog;
     chl::VisorClientPortal portal;
     std::array<std::shared_ptr<rpc::LifecycleStep>, 2> initialized;
     std::shared_ptr<rpc::LifecycleStep> publicFile, finalPermit;
     std::atomic<bool> retirementReady{false}, cleanupComplete{false};
     bool publicSettled = false, publicProved = false, finalProved = false;
-    VisorData(chl::VisorConfiguration const& conf, std::shared_ptr<rpc::RpcRuntime> const& actual)
+    VisorData(chl::VisorConfiguration const& conf,
+              std::shared_ptr<rpc::RpcRuntime> const& actual,
+              std::shared_ptr<chl::SqliteCatalogStore> const& catalog)
         : conf(conf)
         , registry(chl::KeeperRegistry::CreateOwned(conf.RPC_POLICY, actual))
+        , catalog(catalog)
+        , portal(catalog)
     {
         for(auto& mid: mids) mid = std::make_unique<rpc::NativeMidRuntime>(generation);
     }
@@ -63,11 +93,20 @@ int main(int argc, char** argv)
                                        conf.VISOR_LOG_CONF.LOGFILENUM,
                                        conf.VISOR_LOG_CONF.FLUSHLEVEL) != 0)
         return 1;
+    check_catalog_mount(conf.CATALOG_DB_PATH);
+    // The catalog is opened before any service exists; its rows are loaded
+    // below, before either MID starts, so no request sees a partial catalog.
+    auto catalog = std::make_shared<chl::SqliteCatalogStore>(conf.CATALOG_DB_PATH);
+    if(catalog->open() != chl::CL_SUCCESS)
+    {
+        LOG_ERROR("[ChronoVisor] Cannot open the catalog database {}; exiting", conf.CATALOG_DB_PATH);
+        return 1;
+    }
     auto publisher = rpc::LifecyclePublisher::Create(config);
     rpc::LifecycleRecord lifecycle;
     auto startup = rpc::RpcDeadline::fromStart(startupEntered, std::chrono::milliseconds(conf.RPC_POLICY.startup_ms));
     auto actual = std::make_shared<rpc::RpcRuntime>(conf.RPC_SLOTS);
-    auto data = std::make_shared<VisorData>(conf, actual);
+    auto data = std::make_shared<VisorData>(conf, actual, catalog);
     actual->retainOwner(data,
                         [data, publisher]
                         {
@@ -85,6 +124,7 @@ int main(int argc, char** argv)
                             data->portal.core()->releaseOwnedServices();
                             data->mids[1]->awaitApplicationReferences();
                             data->mids[1]->cleanup();
+                            data->catalog->close();
                             data->mids[0]->finalize();
                             data->registry->releaseOwnedRegistryService();
                             data->mids[0]->awaitApplicationReferences();
@@ -115,7 +155,28 @@ int main(int argc, char** argv)
         return result == chl::CL_SUCCESS ? rpc::waitLifecycleStep(data->initialized[index], startup, &stop_requests)
                                          : result;
     };
-    int startupStatus = initialize(0,
+    chl::CatalogSnapshot loaded;
+    int startupStatus = data->portal.LoadCatalog(loaded);
+    // Checked after the load returns: a slow load is not interrupted.
+    if(startupStatus == chl::CL_SUCCESS && startup.expired())
+    {
+        LOG_ERROR("[ChronoVisor] Loading the catalog {} took longer than startup_ms ({} ms)",
+                  conf.CATALOG_DB_PATH,
+                  conf.RPC_POLICY.startup_ms);
+        startupStatus = chl::CL_ERR_DEADLINE_EXCEEDED;
+    }
+    if(startupStatus == chl::CL_SUCCESS)
+    {
+        LOG_INFO("[ChronoVisor] Loaded {} chronicles and {} stories from the catalog {}",
+                 loaded.chronicles.size(),
+                 loaded.stories.size(),
+                 conf.CATALOG_DB_PATH);
+        data->registry->restoreUnconfirmedDestructions(loaded);
+    }
+    else
+        LOG_ERROR("[ChronoVisor] Cannot load the catalog database {}: {}", conf.CATALOG_DB_PATH, startupStatus);
+    if(startupStatus == chl::CL_SUCCESS)
+        startupStatus = initialize(0,
                                    conf.VISOR_KEEPER_REGISTRY_SERVICE_CONF,
                                    [data]
                                    {

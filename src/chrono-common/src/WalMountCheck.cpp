@@ -1,5 +1,6 @@
 #include <cerrno>
 #include <cstdio>
+#include <filesystem>
 
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -107,6 +108,26 @@ int inspectWalDirectory(std::string const& dir, WalMountInfo& info)
     info.free_bytes = static_cast<uint64_t>(space.f_bavail) * space.f_frsize;
     info.total_bytes = static_cast<uint64_t>(space.f_blocks) * space.f_frsize;
     return 0;
+}
+
+std::string nearestExistingDirectory(std::string const& path)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path candidate = fs::absolute(fs::path(path), ec).lexically_normal();
+    if(ec)
+    {
+        return "/";
+    }
+    while(!fs::is_directory(candidate, ec))
+    {
+        if(!candidate.has_parent_path() || candidate.parent_path() == candidate)
+        {
+            return "/";
+        }
+        candidate = candidate.parent_path();
+    }
+    return candidate.string();
 }
 
 std::vector<std::string> walMountWarnings(WalMountInfo const& info, uint64_t reserve_bytes)

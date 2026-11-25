@@ -33,6 +33,12 @@ struct WalMountInfo
 // Returns 0, or the errno of the first call that failed.
 int inspectWalDirectory(std::string const& dir, WalMountInfo& info);
 
+// The directory to inspect for a file that may not exist yet, such as the
+// visor's catalog database: the deepest existing ancestor of `path`, with a
+// relative path resolved against the working directory. The path itself when
+// it is a directory.
+std::string nearestExistingDirectory(std::string const& path);
+
 // One warning per problem: a shared or network file system (the NFS one
 // names the export's sync option, the server's cache and the lock service
 // flock needs), tmpfs, overlayfs, the root device, and free space below

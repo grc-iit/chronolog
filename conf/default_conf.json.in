@@ -47,7 +47,8 @@
       }
     },
     "delayed_data_admin_exit_in_secs": 3,
-    "rpc_slots": 32
+    "rpc_slots": 32,
+    "catalog_db_path": "visor/catalog.sqlite"
   },
   "chrono_keeper": {
     "RpcPolicy": {

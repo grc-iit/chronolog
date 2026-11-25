@@ -4,6 +4,7 @@
 #include <VisorAdminRuntime.h>
 #include <ClientRegistryManager.h>
 #include <ChronicleMetaDirectory.h>
+#include <VisorCatalogStore.h>
 #include <AcquireStoryResponseMsg.h>
 #include <ConfigurationBlocks.h>
 #include <map>
@@ -40,7 +41,13 @@ public:
     // public portal, metadata directory, client manager, or registry lifetime.
     struct Core: std::enable_shared_from_this<Core>
     {
+        // A Core given no store keeps an empty in-memory catalog and counts as
+        // loaded. One given a store opens its port only after LoadCatalog.
         Core();
+        explicit Core(std::shared_ptr<VisorCatalogStore>);
+        // Reads the store's rows into the empty directory and returns them
+        // in loaded, for the registry's destroy markers.
+        int LoadCatalog(CatalogSnapshot& loaded);
         int StartServices(RPCProviderConf const&, std::shared_ptr<KeeperRegistry>);
         int StartOwnedServices(RPCProviderConf const&,
                                std::shared_ptr<KeeperRegistry>,
@@ -97,13 +104,17 @@ public:
         std::shared_ptr<thallium::engine> engine;
         ClientPortalService* provider = nullptr;
         std::shared_ptr<ClientPortalService> ownedProvider;
+        std::shared_ptr<VisorCatalogStore> catalog;
+        std::atomic<bool> catalogLoaded{false};
         ClientRegistryManager clients;
         ChronicleMetaDirectory directory;
         std::mutex operationMutex;
         std::timed_mutex admissionMutex;
     };
     VisorClientPortal();
+    explicit VisorClientPortal(std::shared_ptr<VisorCatalogStore>);
     ~VisorClientPortal();
+    int LoadCatalog(CatalogSnapshot& loaded);
     int StartServices(RPCProviderConf const&, std::shared_ptr<KeeperRegistry>);
     void ShutdownServices();
     int ClientConnect(uint32_t, ClientId&, uint64_t&);

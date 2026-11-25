@@ -279,6 +279,27 @@ endif()
 add_subdirectory(src/chrono-rpc)
 add_subdirectory(src/chrono-common)
 add_subdirectory(client)
+
+# SQLite for the visor's catalog, linked statically. Spack's libsqlite3.so has
+# no SONAME, so a target linked to it records the absolute path into the
+# build's Spack view, which tools/deploy/install.sh does not copy (it keeps only
+# the ldd lines with "=>"). The visor and its catalog test link this target.
+find_package(Threads REQUIRED)
+find_package(SQLite3 REQUIRED)
+get_filename_component(_chronolog_sqlite_libdir "${SQLite3_LIBRARY}" DIRECTORY)
+find_library(CHRONOLOG_SQLITE3_STATIC_LIBRARY
+    NAMES libsqlite3.a
+    HINTS "${_chronolog_sqlite_libdir}"
+    NO_DEFAULT_PATH
+    REQUIRED
+)
+add_library(chronolog_sqlite3 STATIC IMPORTED)
+set_target_properties(chronolog_sqlite3 PROPERTIES
+    IMPORTED_LOCATION "${CHRONOLOG_SQLITE3_STATIC_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${SQLite3_INCLUDE_DIRS}"
+    INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS};Threads::Threads;m"
+)
+
 add_subdirectory(src/chrono-visor)
 add_subdirectory(src/chrono-keeper)
 add_subdirectory(src/chrono-grapher)

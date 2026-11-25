@@ -23,6 +23,7 @@ target_sources(chronovisor_server PRIVATE
     src/ChronicleMetaDirectory.cpp
     src/KeeperRegistry.cpp
     src/VisorAdminRuntime.cpp
+    src/SqliteCatalogStore.cpp
 #    ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
 )
 
@@ -32,6 +33,7 @@ target_link_libraries(chronovisor_server
         chrono_common
         chronolog_client
         thallium
+        chronolog_sqlite3
 )
 
 set_target_properties(chronovisor_server PROPERTIES

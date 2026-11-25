@@ -4,6 +4,7 @@
 #include <ClientPortalService.h>
 #include <private/RpcReply.h>
 #include <ConnectResponseMsg.h>
+#include <InMemoryCatalogStore.h>
 #include <chronolog_client.h>
 #include <thallium/serialization/stl/pair.hpp>
 #include <algorithm>
@@ -95,13 +96,37 @@ std::shared_ptr<VisorControlReply> failure(int status)
 }
 } // namespace
 VisorClientPortal::Core::Core()
+    : Core(std::make_shared<InMemoryCatalogStore>())
+{
+    catalogLoaded.store(true, std::memory_order_release);
+}
+VisorClientPortal::Core::Core(std::shared_ptr<VisorCatalogStore> store)
+    : catalog(std::move(store))
+    , directory(*catalog)
 {
     clients.setChronicleMetaDirectory(&directory);
     directory.set_client_registry_manager(&clients);
 }
+int VisorClientPortal::Core::LoadCatalog(CatalogSnapshot& loaded)
+{
+    int status = catalog->load(loaded);
+    if(status != CL_SUCCESS)
+    {
+        LOG_ERROR("[VisorClientPortal] Cannot load the catalog: {}", status);
+        return status;
+    }
+    status = directory.load(loaded);
+    if(status == CL_SUCCESS)
+        catalogLoaded.store(true, std::memory_order_release);
+    return status;
+}
 VisorClientPortal::VisorClientPortal()
     : core_(std::make_shared<Core>())
 {}
+VisorClientPortal::VisorClientPortal(std::shared_ptr<VisorCatalogStore> store)
+    : core_(std::make_shared<Core>(std::move(store)))
+{}
+int VisorClientPortal::LoadCatalog(CatalogSnapshot& loaded) { return core_->LoadCatalog(loaded); }
 VisorClientPortal::~VisorClientPortal() { ShutdownServices(); }
 void VisorClientPortal::ShutdownServices() { core_->shuttingDown.store(true, std::memory_order_release); }
 int VisorClientPortal::StartServices(RPCProviderConf const& conf, std::shared_ptr<KeeperRegistry> registry)
@@ -112,6 +137,11 @@ int VisorClientPortal::Core::StartServices(RPCProviderConf const& conf, std::sha
 {
     if(engine)
         return CL_SUCCESS;
+    if(!catalogLoaded.load(std::memory_order_acquire))
+    {
+        LOG_ERROR("[VisorClientPortal] Refusing to open the client portal before the catalog is loaded");
+        return CL_ERR_UNKNOWN;
+    }
     registry = std::move(r);
     auto address = conf.PROTO_CONF + "://" + conf.IP + ":" + std::to_string(conf.BASE_PORT);
     auto mid = margo_init(address.c_str(), MARGO_SERVER_MODE, 1, 2);
@@ -129,6 +159,11 @@ int VisorClientPortal::Core::StartOwnedServices(RPCProviderConf const& conf,
 {
     if(engine || !native)
         return CL_ERR_SHUTDOWN_INCOMPLETE;
+    if(!catalogLoaded.load(std::memory_order_acquire))
+    {
+        LOG_ERROR("[VisorClientPortal] Refusing to open the client portal before the catalog is loaded");
+        return CL_ERR_UNKNOWN;
+    }
     registry = std::move(r);
     engine = native;
     provider = ClientPortalService::CreateOwned(*native, conf.SERVICE_PROVIDER_ID, shared_from_this(), ownedProvider);
@@ -308,6 +343,22 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
     auto r = failure(CL_ERR_UNKNOWN);
     StoryId id = 0;
     bool last = false;
+    // Every grapher confirmed the destroy of the chronicle (story empty) or
+    // the story: its rows are deleted, which also clears their flag. If the
+    // delete fails, the name stays, still flagged, and the registry keeps the
+    // destroy as unconfirmed, so the next destroy, create or acquire of the
+    // name sends it again and retries the delete.
+    auto removeDestroyed = [&](std::string const& c, std::string const& s) -> int
+    {
+        int removed = s.empty() ? directory.destroy_chronicle(c) : directory.destroy_story(c, s);
+        if(removed == CL_SUCCESS || removed == CL_ERR_NOT_EXIST)
+            return CL_SUCCESS;
+        if(s.empty())
+            registry->restoreUnconfirmedChronicleDestruction(c);
+        else
+            registry->restoreUnconfirmedStoryDestruction(c, s, Chronicle::storyIdOf(c, s));
+        return CL_ERR_OUTCOME_UNCONFIRMED;
+    };
     // A destroy of the chronicle, or of the story, that a grapher did not
     // confirm is sent again before a create or acquire of the name, as an
     // unconfirmed stop is; once every grapher confirms it, the name is removed
@@ -322,12 +373,11 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
         int status = registry->finishUnconfirmedDestruction(c, s, resend, chronicleDestroyed, storyDestroyed);
         if(status != CL_SUCCESS)
             return status;
-        int removed = CL_SUCCESS;
         if(chronicleDestroyed)
-            removed = directory.destroy_chronicle(c);
-        else if(storyDestroyed)
-            removed = directory.destroy_story(c, s);
-        return removed == CL_SUCCESS || removed == CL_ERR_NOT_EXIST ? CL_SUCCESS : CL_ERR_OUTCOME_UNCONFIRMED;
+            return removeDestroyed(c, "");
+        if(storyDestroyed)
+            return removeDestroyed(c, s);
+        return CL_SUCCESS;
     };
     switch(action)
     {
@@ -454,9 +504,20 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
                         break;
                 }
             }
-            r->status = registry->notifyAllGraphersOfStoryDestruction(chronicle, story, id, &deadline);
+            // The flag is committed once the destroy is about to be sent, so
+            // a visor restart before every grapher confirmed sends it again.
+            // If that write fails the answer is CL_ERR_UNKNOWN and nothing
+            // goes to the graphers, but a hold the caller had is already
+            // released and its stop sent, as when the destroy below answers
+            // -22 or -24.
+            r->status = registry->notifyAllGraphersOfStoryDestruction(
+                    chronicle,
+                    story,
+                    id,
+                    &deadline,
+                    [&] { return directory.set_story_destroy_pending(chronicle, story, true); });
             if(r->status == CL_SUCCESS)
-                r->status = directory.destroy_story(chronicle, story);
+                r->status = removeDestroyed(chronicle, story);
             break;
         }
         case VisorControlAction::DestroyChronicle:
@@ -479,9 +540,15 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
             }
             if(r->status != CL_SUCCESS)
                 break;
-            r->status = registry->notifyAllGraphersOfChronicleDestruction(chronicle, &deadline);
+            // As for a story: a failed flag write answers CL_ERR_UNKNOWN with
+            // nothing sent to the graphers, after the caller's holds above
+            // were released and their stops sent.
+            r->status = registry->notifyAllGraphersOfChronicleDestruction(
+                    chronicle,
+                    &deadline,
+                    [&] { return directory.set_chronicle_destroy_pending(chronicle, true); });
             if(r->status == CL_SUCCESS)
-                r->status = directory.destroy_chronicle(chronicle);
+                r->status = removeDestroyed(chronicle, "");
             break;
         }
         case VisorControlAction::Disconnect:

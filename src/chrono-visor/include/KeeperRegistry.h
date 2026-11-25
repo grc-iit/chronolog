@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <ctime>
+#include <functional>
 #include <list>
 #include <map>
 #include <mutex>
@@ -44,6 +45,8 @@ struct RegistryConfiguration
 class DataStoreAdminClient;
 
 class KeeperRegistryService;
+
+struct CatalogSnapshot;
 
 class KeeperProcessEntry
 {
@@ -231,13 +234,29 @@ public:
     int notifyAllGraphersOfStoryDestruction(ChronicleName const&,
                                             StoryName const&,
                                             StoryId const&,
-                                            rpc::RpcDeadline const* = nullptr);
+                                            rpc::RpcDeadline const* = nullptr,
+                                            std::function<int()> const& before_send = {});
 
     // Broadcast destroy_chronicle to every active Grapher in the registry.
     // Both return CL_ERR_OUTCOME_UNCONFIRMED for a destroy that was sent and
     // that some grapher did not confirm, whatever it answered, and keep it
     // pending to be sent again.
-    int notifyAllGraphersOfChronicleDestruction(ChronicleName const&, rpc::RpcDeadline const* = nullptr);
+    // before_send runs without registryLock once the destroy is marked in
+    // flight and its slots are reserved, before anything is sent; the portal
+    // commits the catalog's destroy_pending flag there. When it fails, the
+    // marker is put back as it was, nothing is sent, and its status is
+    // returned.
+    int notifyAllGraphersOfChronicleDestruction(ChronicleName const&,
+                                                rpc::RpcDeadline const* = nullptr,
+                                                std::function<int()> const& before_send = {});
+
+    // Destroys that a grapher had not confirmed when the visor stopped, from
+    // the catalog's destroy_pending flags (plan Amendment P6). Each is kept as
+    // a destroy that ended unconfirmed, so the next destroy, create or acquire
+    // of the name sends it again. Called before the registry service starts.
+    void restoreUnconfirmedDestructions(CatalogSnapshot const&);
+    void restoreUnconfirmedChronicleDestruction(ChronicleName const&);
+    void restoreUnconfirmedStoryDestruction(ChronicleName const&, StoryName const&, StoryId const&);
 
     // A destroy of `chronicle`, or of `story` in it, that a grapher did not
     // confirm is sent again, as an unconfirmed stop is: the next create or
