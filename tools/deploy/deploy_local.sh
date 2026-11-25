@@ -106,6 +106,8 @@ generate_config_files() {
     # The keepers' WAL root, absolute; empty when the WAL is off, which leaves
     # the template's WAL block as it is.
     local wal_root=$8
+    # The visor's catalog file, absolute; empty leaves the template's value.
+    local catalog_db_path=${9:-}
 
     mkdir -p "${monitor_dir}"
 
@@ -251,6 +253,11 @@ generate_config_files() {
     jq --arg monitor_dir "$monitor_dir" \
         --arg visor_monitoring_file_name "$visor_monitoring_file_name" \
        '.chrono_visor.Monitoring.monitor.file = ($monitor_dir + "/" + $visor_monitoring_file_name)' "$default_conf" > "$visor_output_file"
+    if [[ -n "${catalog_db_path}" ]]; then
+        jq --arg catalog_db_path "$catalog_db_path" \
+            '.chrono_visor.catalog_db_path = $catalog_db_path' "$visor_output_file" > "${visor_output_file}.tmp" &&
+            mv "${visor_output_file}.tmp" "$visor_output_file"
+    fi
     echo "Generated $visor_output_file"
 
     echo "Generating client configuration file ..."
@@ -467,7 +474,7 @@ start() {
     if wal_enabled; then
         wal_root=$(realpath -m "${WORK_DIR}/wal")
     fi
-    generate_config_files "${NUM_KEEPERS}" "${CONF_FILE}" "${CONF_DIR}" "${OUTPUT_DIR}" "${NUM_RECORDING_GROUPS}" "${MONITOR_DIR}" "${CLIENT_CONF_FILE}" "${wal_root}"
+    generate_config_files "${NUM_KEEPERS}" "${CONF_FILE}" "${CONF_DIR}" "${OUTPUT_DIR}" "${NUM_RECORDING_GROUPS}" "${MONITOR_DIR}" "${CLIENT_CONF_FILE}" "${wal_root}" "$(visor_catalog_path)"
     echo -e "${INFO}Starting ChronoLog...${NC}"
     start_service "${VISOR_BIN}" "${CONF_DIR}/chrono-visor-conf.json" visor "chrono-visor.launch.log"
     for (( i=1; i<=NUM_RECORDING_GROUPS; i++ )); do
@@ -520,6 +527,27 @@ restart() {
     echo -e "${INFO}Keeper ${RESTART_KEEPER_INDEX} relaunched.${NC}"
 }
 
+# The visor's catalog file, in the work directory's visor directory.
+visor_catalog_path() {
+    realpath -m "${WORK_DIR}/visor/catalog.sqlite"
+}
+
+# Removes the catalog file and its -wal and -shm siblings, so a cleaned
+# deployment starts with no chronicles or stories that name deleted archive
+# files. Takes the catalog path; only those three names are touched.
+clean_visor_catalog() {
+    local catalog=$1
+    [[ -n "${catalog}" ]] || return 0
+    local file
+    for file in "${catalog}" "${catalog}-wal" "${catalog}-shm"; do
+        if [[ -e "${file}" || -L "${file}" ]]; then
+            rm -f -- "${file}"
+            echo -e "${DEBUG}Removed visor catalog file ${file}${NC}"
+        fi
+    done
+    rmdir -- "$(dirname "${catalog}")" 2> /dev/null || true
+}
+
 clean() {
     echo -e "${INFO}Cleaning ChronoLog...${NC}"
     check_work_dir
@@ -535,6 +563,11 @@ clean() {
 
     echo -e "${DEBUG}Removing log files${NC}"
     rm -f "${MONITOR_DIR}"/*.log
+
+    # Before the archive: a catalog without its archive names files that are
+    # gone, the reverse only leaves archive files nothing names.
+    echo -e "${DEBUG}Removing visor catalog${NC}"
+    clean_visor_catalog "$(visor_catalog_path)"
 
     echo -e "${DEBUG}Removing output files${NC}"
     clean_output_dir "${OUTPUT_DIR}"

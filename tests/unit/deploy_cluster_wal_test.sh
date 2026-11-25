@@ -24,6 +24,7 @@ check() { # LABEL COMMAND...
 # Load the production functions without running the script.
 for fn in work_dir_hash list_keeper_wal_dirs keeper_wal_remote_cmd collect_keeper_wal_states \
     report_keeper_wal_exit_summaries clean_keeper_wal_dirs get_remote_hostname restart_keeper \
+    visor_catalog_path update_visor_catalog_path warn_catalog_on_nfs clean_visor_catalog \
     stop clean check_op_validity parse_args; do
     source <(sed -n "/^${fn}() {/,/^}/p" "$script")
 done
@@ -32,14 +33,14 @@ ERR='' INFO='' DEBUG='' WARN='' NC=''
 # sets USER from whoami at its top, which is not loaded here, and a container
 # may not set it.
 USER=${USER:-$(whoami)}
-verbose=false JOB_ID="" NUM_RECORDING_GROUP=1 force=false
+verbose=false JOB_ID="" NUM_RECORDING_GROUP=1 force=false CATALOG_DIR=""
 usage() { exit 1; }
 
 # Remote side: "hostname" answers FAKE_HOSTNAME; hosts listed in $down do not answer.
 mkdir -p "$fixture/shim"
 printf '#!/usr/bin/env bash\necho "${FAKE_HOSTNAME:?}"\n' > "$fixture/shim/hostname"
 chmod +x "$fixture/shim/hostname"
-down=""
+down="" host_suffix="" # what `hostname` adds to the visor host nodeV, as an FQDN does
 parallel-ssh() { # -h HOSTS_FILE -i COMMAND, as deploy_cluster.sh calls it
     local hosts_file="" cmd="" n=0 host
     while [[ $# -gt 0 ]]; do
@@ -52,22 +53,37 @@ parallel-ssh() { # -h HOSTS_FILE -i COMMAND, as deploy_cluster.sh calls it
     done
     [[ -f "$hosts_file" ]] || return 1
     while read -r host; do
+        [[ -z "$host" || "$host" == \#* ]] && continue # parallel-ssh skips these
         n=$((n + 1))
         if [[ " $down " == *" $host "* ]]; then
             echo "[$n] 10:00:00 [FAILURE] $host Exited with error code 255"
             continue
         fi
         echo "[$n] 10:00:00 [SUCCESS] $host"
-        FAKE_HOSTNAME=$host PATH="$fixture/shim:$PATH" bash -c "$cmd" < /dev/null
+        FAKE_HOSTNAME=$host$([[ $host == nodeV ]] && echo "$host_suffix") PATH="$fixture/shim:$PATH" bash -c "$cmd" < /dev/null
     done < "$hosts_file"
 }
-ssh() { # -n HOST COMMAND
+minpath="$fixture/minpath" # dirname, head, sed and bash only: no findmnt, no stat
+mkdir -p "$minpath"
+for tool in bash dirname head sed; do ln -sf "$(command -v "$tool")" "$minpath/$tool"; done
+ssh() { # -n [-o OPTION]... HOST COMMAND
     [[ "$1" == -n ]] || return 255
+    shift
+    : > "$fixture/ssh-options"
+    while [[ "$1" == -o ]]; do
+        echo "$2" >> "$fixture/ssh-options"
+        shift 2
+    done
+    set -- x "$@"
     [[ " $down " == *" $2 "* ]] && return 255
+    if [[ -n "${MINPATH:-}" ]]; then
+        FAKE_HOSTNAME=$2$([[ $2 == nodeV ]] && echo "$host_suffix") PATH="$minpath" bash -c "$3" < /dev/null 2>&1 | cat
+        return "${PIPESTATUS[0]}"
+    fi
     # Like ssh, return only once every remote process has closed the session's
     # stdout and stderr: a process left in the background holding them keeps
     # it open.
-    FAKE_HOSTNAME=$2 PATH="$fixture/shim:$PATH" bash -c "$3" < /dev/null 2>&1 | cat
+    FAKE_HOSTNAME=$2$([[ $2 == nodeV ]] && echo "$host_suffix") PATH="$fixture/shim:$PATH" bash -c "$3" < /dev/null 2>&1 | cat
     return "${PIPESTATUS[0]}"
 }
 
@@ -308,6 +324,166 @@ run_clean
     fail "clean: a WAL directory not named <hash>/<group> is not removed"
 grep -q "$other" "$fixture/clean-out" && pass "clean: the directory left behind is named" || fail "clean: the directory left behind is named"
 
+# The visor catalog: the path written into the conf, and --clean's removal of
+# the files that conf names on the visor host.
+catalog_dir="$fixture/hosts/nodeV/local"
+catalog_setup() { # a visor host with a catalog directory and files, named by an absolute catalog_db_path
+    setup
+    all_clean
+    CATALOG_DIR=""
+    printf 'nodeV\n' > "$VISOR_HOSTS"
+    mkdir -p "$catalog_dir"
+    jq --arg p "$catalog_dir/catalog.sqlite" '.chrono_visor.catalog_db_path = $p' "$CONF_FILE" > "$fixture/tmp.json" &&
+        mv "$fixture/tmp.json" "$CONF_FILE"
+    touch "$catalog_dir/catalog.sqlite" "$catalog_dir/catalog.sqlite-wal" "$catalog_dir/catalog.sqlite-shm" "$catalog_dir/other"
+}
+clean_output_dir() { # records whether the catalog was already gone when the archive is removed
+    if [[ -e "$catalog_dir/catalog.sqlite" ]]; then echo catalog-present > "$fixture/order"; else echo catalog-gone > "$fixture/order"; fi
+}
+catalog_setup
+rm -f "$fixture/order"
+if run_clean; then pass "catalog clean: exits 0"; else fail "catalog clean: exits 0: $(cat "$fixture/clean-out")"; fi
+[[ ! -e "$catalog_dir/catalog.sqlite" && ! -e "$catalog_dir/catalog.sqlite-wal" && ! -e "$catalog_dir/catalog.sqlite-shm" ]] &&
+    pass "catalog clean: the catalog and its -wal and -shm files are removed" || fail "catalog clean: the catalog and its -wal and -shm files are removed"
+[[ -f "$catalog_dir/other" ]] && pass "catalog clean: an unrelated file in the directory is kept" || fail "catalog clean: an unrelated file in the directory is kept"
+[[ "$(grep -c 'Removed visor catalog file' "$fixture/clean-out")" -eq 3 ]] && grep -q "catalog.sqlite-shm on nodeV" "$fixture/clean-out" &&
+    pass "catalog clean: each removed file is named" || fail "catalog clean: each removed file is named: $(cat "$fixture/clean-out")"
+[[ "$(cat "$fixture/order" 2> /dev/null)" == catalog-gone ]] && pass "catalog clean: the catalog goes before the archive" ||
+    fail "catalog clean: the catalog goes before the archive"
+
+catalog_setup
+down=nodeV
+rm -f "$fixture/order"
+if run_clean; then fail "catalog clean: a visor host that did not answer fails clean"; else pass "catalog clean: a visor host that did not answer fails clean"; fi
+grep -q "WARNING: nodeV did not answer; $catalog_dir/catalog.sqlite is not removed" "$fixture/clean-out" &&
+    pass "catalog clean: the unanswered host and the catalog are named" || fail "catalog clean: the unanswered host and the catalog are named: $(cat "$fixture/clean-out")"
+[[ -f "$catalog_dir/catalog.sqlite" && -f "$catalog_dir/catalog.sqlite-wal" && -f "$catalog_dir/catalog.sqlite-shm" ]] &&
+    pass "catalog clean: the files stay when the host did not answer" || fail "catalog clean: the files stay when the host did not answer"
+[[ ! -e "$fixture/order" ]] && pass "catalog clean: the archive is not removed when the catalog is not" ||
+    fail "catalog clean: the archive is not removed when the catalog is not"
+grep -q "Visor catalog not removed; the archive in $OUTPUT_DIR is kept. Run --clean again" "$fixture/clean-out" &&
+    pass "catalog clean: the failure says the archive is kept" || fail "catalog clean: the failure says the archive is kept: $(cat "$fixture/clean-out")"
+compgen -G "$CONF_FILE.*" > /dev/null && pass "catalog clean: the generated confs stay for the next --clean" ||
+    fail "catalog clean: the generated confs stay for the next --clean"
+down=""
+
+# A hosts_visor entry that is not what `hostname` prints (an FQDN here), and a
+# comment line in the file: both are clean.
+catalog_setup
+printf '# visor\nnodeV\n' > "$VISOR_HOSTS"
+host_suffix=.example.org
+rm -f "$fixture/order"
+if run_clean; then pass "catalog clean: an entry that differs from hostname is clean"; else
+    fail "catalog clean: an entry that differs from hostname is clean: $(cat "$fixture/clean-out")"
+fi
+[[ ! -e "$catalog_dir/catalog.sqlite" ]] && grep -q "catalog.sqlite-shm on nodeV" "$fixture/clean-out" &&
+    ! grep -q "did not answer" "$fixture/clean-out" && pass "catalog clean: the files go and the entry is named, not hostname" ||
+    fail "catalog clean: the files go and the entry is named, not hostname: $(cat "$fixture/clean-out")"
+host_suffix=""
+catalog_setup
+printf '# visor\nnodeV\n' > "$VISOR_HOSTS"
+if run_clean; then pass "catalog clean: a # comment line in hosts_visor is skipped"; else
+    fail "catalog clean: a # comment line in hosts_visor is skipped: $(cat "$fixture/clean-out")"
+fi
+down=""
+
+# A file that cannot be removed is not a clean host.
+if [[ "$(id -u)" != 0 ]]; then
+    catalog_setup
+    rm -f "$fixture/order"
+    chmod a-w "$catalog_dir"
+    if run_clean; then fail "catalog clean: a file that cannot be removed fails clean"; else pass "catalog clean: a file that cannot be removed fails clean"; fi
+    chmod u+w "$catalog_dir"
+    grep -q "WARNING: $catalog_dir/catalog.sqlite is not removed on nodeV" "$fixture/clean-out" &&
+        pass "catalog clean: the file and the host are named" || fail "catalog clean: the file and the host are named: $(cat "$fixture/clean-out")"
+    [[ -f "$catalog_dir/catalog.sqlite" && ! -e "$fixture/order" ]] && pass "catalog clean: the catalog and the archive stay" ||
+        fail "catalog clean: the catalog and the archive stay"
+else
+    echo "SKIP: catalog clean: a non-writable catalog directory (running as root)"
+fi
+
+# A directory the user chose with --catalog-dir is kept when it is emptied.
+catalog_setup
+CATALOG_DIR="$catalog_dir"
+rm -f "$catalog_dir/other"
+run_clean
+[[ -d "$catalog_dir" && ! -e "$catalog_dir/catalog.sqlite" ]] &&
+    pass "catalog clean: an emptied --catalog-dir directory is kept" || fail "catalog clean: an emptied --catalog-dir directory is kept"
+CATALOG_DIR=""
+
+# A reinstall resets the conf to the template's relative value: clean finds the
+# catalog where start put it, under the work directory.
+setup
+printf 'nodeV\n' > "$VISOR_HOSTS"
+mkdir -p "$WORK_DIR/visor"
+touch "$WORK_DIR/visor/catalog.sqlite" "$WORK_DIR/visor/catalog.sqlite-wal"
+if run_clean; then pass "catalog clean: a relative catalog_db_path in the conf cleans"; else
+    fail "catalog clean: a relative catalog_db_path in the conf cleans: $(cat "$fixture/clean-out")"
+fi
+[[ ! -e "$WORK_DIR/visor" ]] && pass "catalog clean: a relative catalog_db_path is read under the work dir, and its directory goes" ||
+    fail "catalog clean: a relative catalog_db_path is read under the work dir, and its directory goes"
+# --catalog-dir given to --clean names the catalog after a reinstall.
+setup
+printf 'nodeV\n' > "$VISOR_HOSTS"
+mkdir -p "$catalog_dir"
+touch "$catalog_dir/catalog.sqlite"
+CATALOG_DIR="$catalog_dir"
+run_clean
+[[ ! -e "$catalog_dir/catalog.sqlite" ]] && pass "catalog clean: --catalog-dir names the catalog when the conf holds the template value" ||
+    fail "catalog clean: --catalog-dir names the catalog when the conf holds the template value"
+CATALOG_DIR=""
+clean_output_dir() { :; }
+
+# The path update writes. update writes tmp.json in the working directory.
+catalog_path_after() { # prints chrono_visor.catalog_db_path after update_visor_catalog_path
+    (cd "$fixture" && update_visor_catalog_path && jq -r '.chrono_visor.catalog_db_path' "$CONF_FILE")
+}
+setup
+[[ "$(catalog_path_after)" == "$WORK_DIR/visor/catalog.sqlite" ]] && pass "catalog path: the template's relative value goes under the work dir" ||
+    fail "catalog path: the template's relative value goes under the work dir: $(catalog_path_after)"
+catalog_setup
+[[ "$(catalog_path_after)" == "$catalog_dir/catalog.sqlite" ]] && pass "catalog path: an absolute catalog_db_path in the conf survives" ||
+    fail "catalog path: an absolute catalog_db_path in the conf survives: $(catalog_path_after)"
+CATALOG_DIR="$fixture/hosts/nodeV/chosen"
+ln -sfn "$fixture/hosts/nodeV/real" "$fixture/link"
+mkdir -p "$fixture/hosts/nodeV/real"
+CATALOG_DIR="$fixture/link" ; [[ "$(catalog_path_after)" == "$fixture/link/catalog.sqlite" ]] &&
+    pass "catalog path: a symlink in --catalog-dir is not resolved" || fail "catalog path: a symlink in --catalog-dir is not resolved: $(catalog_path_after)"
+CATALOG_DIR="$fixture/hosts/nodeV/chosen"
+[[ "$(catalog_path_after)" == "$fixture/hosts/nodeV/chosen/catalog.sqlite" ]] && pass "catalog path: --catalog-dir wins over the conf" ||
+    fail "catalog path: --catalog-dir wins over the conf: $(catalog_path_after)"
+CATALOG_DIR=""
+mv "$CONF_FILE" "$CONF_FILE.gone"
+visor_catalog_path > "$fixture/path-out" 2> "$fixture/path-err"
+[[ "$(cat "$fixture/path-out")" == "$WORK_DIR/visor/catalog.sqlite" && ! -s "$fixture/path-err" ]] &&
+    pass "catalog path: a missing conf falls back to work_dir/visor without a jq error" ||
+    fail "catalog path: a missing conf falls back to work_dir/visor without a jq error: $(cat "$fixture/path-out" "$fixture/path-err")"
+mv "$CONF_FILE.gone" "$CONF_FILE"
+
+# The NFS warning, with findmnt answering for the visor host.
+printf '#!/usr/bin/env bash\necho "${FAKE_FSTYPE:?}"\n' > "$fixture/shim/findmnt"
+chmod +x "$fixture/shim/findmnt"
+catalog_setup
+FAKE_FSTYPE=nfs4 warn_catalog_on_nfs > "$fixture/nfs-out" 2>&1
+grep -q "WARNING: nodeV: the visor catalog $catalog_dir/catalog.sqlite is on nfs4" "$fixture/nfs-out" && grep -q -- --catalog-dir "$fixture/nfs-out" &&
+    pass "catalog nfs: a catalog on NFS gets a warning naming --catalog-dir" || fail "catalog nfs: a catalog on NFS gets a warning naming --catalog-dir: $(cat "$fixture/nfs-out")"
+FAKE_FSTYPE=ext4 warn_catalog_on_nfs > "$fixture/nfs-out" 2>&1
+[[ ! -s "$fixture/nfs-out" ]] && pass "catalog nfs: a local file system gets no warning" || fail "catalog nfs: a local file system gets no warning"
+FAKE_FSTYPE=ext4 warn_catalog_on_nfs > /dev/null 2>&1
+grep -qx "BatchMode=yes" "$fixture/ssh-options" && grep -qx "ConnectTimeout=10" "$fixture/ssh-options" &&
+    pass "catalog nfs: the probe cannot prompt or hang" || fail "catalog nfs: the probe cannot prompt or hang: $(cat "$fixture/ssh-options")"
+down=nodeV
+FAKE_FSTYPE=nfs4 warn_catalog_on_nfs > "$fixture/nfs-out" 2>&1
+[[ ! -s "$fixture/nfs-out" ]] && pass "catalog nfs: a host that does not answer gets no warning" || fail "catalog nfs: a host that does not answer gets no warning"
+down=""
+verbose=true MINPATH=1 warn_catalog_on_nfs > "$fixture/nfs-out" 2>&1
+grep -q "nodeV: neither findmnt nor stat is available" "$fixture/nfs-out" && ! grep -q WARNING "$fixture/nfs-out" &&
+    pass "catalog nfs: a host with neither findmnt nor stat is reported when verbose" ||
+    fail "catalog nfs: a host with neither findmnt nor stat is reported when verbose: $(cat "$fixture/nfs-out")"
+verbose=false MINPATH=1 warn_catalog_on_nfs > "$fixture/nfs-out" 2>&1
+[[ ! -s "$fixture/nfs-out" ]] && pass "catalog nfs: the missing tools are not reported unless verbose" || fail "catalog nfs: the missing tools are not reported unless verbose"
+rm -f "$fixture/shim/findmnt"
+
 # --restart-keeper: the lifecycle relaunches the keeper, and refuses while the
 # recorded one still runs (test_deployment_lifecycle.py checks that part).
 setup
@@ -406,6 +582,14 @@ reset_args
 parse_args --clean --force > /dev/null
 [[ "$force" == true && "$clean" == true ]] && pass "args: --force with --clean" || fail "args: --force with --clean"
 reset_args
+CATALOG_DIR=""
+parse_args --start --catalog-dir /x/y > /dev/null
+[[ "$CATALOG_DIR" == /x/y ]] && pass "args: --catalog-dir sets the catalog directory" || fail "args: --catalog-dir sets the catalog directory"
+reset_args
+(parse_args --start --catalog-dir "") > "$fixture/args-out" 2>&1 && fail "args: an empty --catalog-dir is refused" ||
+    { grep -q -- "--catalog-dir needs a directory" "$fixture/args-out" && pass "args: an empty --catalog-dir is refused"; } ||
+    fail "args: an empty --catalog-dir is refused: $(cat "$fixture/args-out")"
+reset_args
 parse_args --stop --restart-keeper nodeB > /dev/null
 (check_op_validity) > /dev/null 2>&1 && fail "args: --restart-keeper with another mode refused" ||
     pass "args: --restart-keeper with another mode refused"
@@ -419,7 +603,7 @@ delegated() { # MODE ARGS...: runs single_user_deploy.sh's parse_args and delega
     local mode=$1
     shift
     build=false install=false start=false stop=false clean=false restart=false force=false
-    wal=false WAL_DIR_LIST="" RESTART_KEEPER_HOST="" JOB_ID="" verbose=false NUM_RECORDING_GROUP=1
+    wal=false WAL_DIR_LIST="" CATALOG_DIR="" RESTART_KEEPER_HOST="" JOB_ID="" verbose=false NUM_RECORDING_GROUP=1
     WORK_DIR="$fixture/work"
     MONITOR_DIR="$WORK_DIR/monitor" OUTPUT_DIR="$WORK_DIR/output"
     VISOR_BIN="$WORK_DIR/bin/chrono-visor" GRAPHER_BIN="$WORK_DIR/bin/chrono-grapher"
@@ -445,6 +629,15 @@ delegated() { # MODE ARGS...: runs single_user_deploy.sh's parse_args and delega
     fail "single_user_deploy: --restart-keeper passed with its host: $(delegated --restart-keeper --restart-keeper nodeB)"
 [[ "$(delegated --restart-keeper --restart-keeper nodeB --stop)" == invalid ]] &&
     pass "single_user_deploy: --restart-keeper with another mode refused" || fail "single_user_deploy: --restart-keeper with another mode refused"
+
+[[ "$(delegated --start --start --catalog-dir /var/local/chronolog)" == *"--catalog-dir /var/local/chronolog "* ]] &&
+    pass "single_user_deploy: --catalog-dir passed on start" || fail "single_user_deploy: --catalog-dir passed on start: $(delegated --start --start --catalog-dir /var/local/chronolog)"
+[[ "$(delegated --clean --clean --catalog-dir /var/local/chronolog)" == *"--catalog-dir /var/local/chronolog "* ]] &&
+    pass "single_user_deploy: --catalog-dir passed on clean" || fail "single_user_deploy: --catalog-dir passed on clean"
+[[ "$(delegated --stop --stop --catalog-dir /var/local/chronolog)" != *"--catalog-dir"* ]] &&
+    pass "single_user_deploy: --catalog-dir not passed on stop" || fail "single_user_deploy: --catalog-dir not passed on stop"
+(delegated --start --start --catalog-dir "") > /dev/null 2>&1 && fail "single_user_deploy: an empty --catalog-dir is refused" ||
+    pass "single_user_deploy: an empty --catalog-dir is refused"
 
 echo "$failures deploy_cluster WAL checks failed"
 test "$failures" -eq 0

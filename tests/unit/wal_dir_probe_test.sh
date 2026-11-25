@@ -584,7 +584,7 @@ chmod +x "$DEPLOY_CLUSTER_SCRIPT"
 delegated() { # MODE ARGS...: runs single_user_deploy.sh's parse_args and delegation, prints the delegated args
     local mode=$1
     shift
-    wal=false WAL_DIR_LIST="" JOB_ID="" verbose=false NUM_RECORDING_GROUP=1
+    wal=false WAL_DIR_LIST="" CATALOG_DIR="" JOB_ID="" verbose=false NUM_RECORDING_GROUP=1
     WORK_DIR="$fixture/work"
     MONITOR_DIR="$WORK_DIR/monitor" OUTPUT_DIR="$WORK_DIR/output"
     VISOR_BIN="$WORK_DIR/bin/chrono-visor" GRAPHER_BIN="$WORK_DIR/bin/chrono-grapher"

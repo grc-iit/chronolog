@@ -19,7 +19,7 @@ check() {
 }
 
 # Load the production functions without starting daemons.
-for fn in generate_config_files read_exit_summary report_wal_exit_summaries clean_wal_dirs restart_keeper parse_args; do
+for fn in generate_config_files read_exit_summary report_wal_exit_summaries clean_wal_dirs restart_keeper parse_args clean_visor_catalog visor_catalog_path clean; do
     source <(sed -n "/^${fn}() {/,/^}/p" "$script")
 done
 ERR='' INFO='' DEBUG='' NC=''
@@ -143,6 +143,57 @@ conf_dir="$fixture/stop-off/conf"
 mkdir -p "$conf_dir"
 generate_config_files 1 "$template" "$conf_dir" "$fixture/output" 1 "$fixture/monitor" "$client_template" "" > /dev/null
 check "stop: WAL off has nothing to check and exits 0" quiet report_wal_exit_summaries "$conf_dir"
+
+# Visor catalog --------------------------------------------------------------------------------------
+catalog_conf="$fixture/catalog/conf"
+mkdir -p "$catalog_conf"
+generate_config_files 1 "$template" "$catalog_conf" "$fixture/output" 1 "$fixture/monitor" "$client_template" "" \
+    "$fixture/catalog/work/visor/catalog.sqlite" > /dev/null
+check "catalog: the visor conf names the absolute path" \
+    test "$(jq -r '.chrono_visor.catalog_db_path' "$catalog_conf/chrono-visor-conf.json")" = "$fixture/catalog/work/visor/catalog.sqlite"
+check "catalog: the visor conf differs from the template only in catalog_db_path and the monitor file" \
+    test "$(jq -c 'del(.chrono_visor.catalog_db_path, .chrono_visor.Monitoring.monitor.file)' "$catalog_conf/chrono-visor-conf.json")" = \
+    "$(jq -c 'del(.chrono_visor.catalog_db_path, .chrono_visor.Monitoring.monitor.file)' "$template")"
+check "catalog: without the ninth argument the template's value stays" \
+    test "$(jq -r '.chrono_visor.catalog_db_path' "$off_conf/chrono-visor-conf.json")" = "$(jq -r '.chrono_visor.catalog_db_path' "$template")"
+
+catalog_dir="$fixture/catalog/work/visor"
+mkdir -p "$catalog_dir"
+touch "$catalog_dir/catalog.sqlite" "$catalog_dir/catalog.sqlite-wal" "$catalog_dir/keep.txt"
+ln -s "$fixture/catalog/nowhere" "$catalog_dir/catalog.sqlite-shm"
+quiet clean_visor_catalog "$catalog_dir/catalog.sqlite"
+check "catalog clean: the catalog, its -wal file and a dangling -shm symlink are removed" \
+    test ! -e "$catalog_dir/catalog.sqlite" -a ! -e "$catalog_dir/catalog.sqlite-wal" -a ! -L "$catalog_dir/catalog.sqlite-shm"
+check "catalog clean: another file in the directory is kept, and so is the directory" test -f "$catalog_dir/keep.txt"
+rm -f "$catalog_dir/keep.txt"
+touch "$catalog_dir/catalog.sqlite"
+quiet clean_visor_catalog "$catalog_dir/catalog.sqlite"
+check "catalog clean: the directory is removed once empty" test ! -e "$catalog_dir"
+check "catalog clean: no catalog and no directory is not an error" quiet clean_visor_catalog "$catalog_dir/catalog.sqlite"
+
+# The catalog goes before the archive, and a failing catalog removal stops clean
+# (set -e, as in the script) before the archive is touched.
+order_log="$fixture/order"
+check_work_dir() { :; }
+fence_mutation() { :; }
+clean_wal_dirs() { :; }
+clean_output_dir() { echo archive >> "$order_log"; }
+WORK_DIR="$fixture/order-work" CONF_DIR="$fixture/order-conf" MONITOR_DIR="$fixture/order-monitor" OUTPUT_DIR="$fixture/order-output" force=false
+mkdir -p "$CONF_DIR" "$MONITOR_DIR"
+real_clean_visor_catalog=$(declare -f clean_visor_catalog)
+clean_visor_catalog() { echo catalog >> "$order_log"; }
+: > "$order_log"
+( set -e; clean ) > /dev/null 2>&1
+check "clean: the catalog is removed before the archive" test "$(tr '\n' ' ' < "$order_log")" = "catalog archive "
+clean_visor_catalog() { echo catalog >> "$order_log"; return 1; }
+: > "$order_log"
+set +e
+( set -e; clean ) > /dev/null 2>&1
+rc=$?
+set -e
+check "clean: a failing catalog removal stops clean before the archive" test "$rc" -ne 0 -a "$(tr '\n' ' ' < "$order_log")" = "catalog "
+eval "$real_clean_visor_catalog"
+source <(sed -n "/^clean_wal_dirs() {/,/^}/p" "$script")
 
 # Clean ----------------------------------------------------------------------------------------------
 wal_root="$fixture/clean/wal"

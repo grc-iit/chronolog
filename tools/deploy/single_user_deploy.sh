@@ -85,6 +85,9 @@ RESTART_KEEPER_HOST=""
 wal=false
 WAL_DIR_LIST=""
 
+# The visor catalog directory, passed to deploy_cluster.sh on start.
+CATALOG_DIR=""
+
 # Verbose flag
 verbose=false
 
@@ -133,6 +136,12 @@ usage() {
   echo "Configuration Settings:"
   echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default-chrono-conf.json) [Modes: Start]"
   echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/chrono-client-conf.json) [Modes: Start]"
+  echo ""
+  echo "Visor Catalog Settings:"
+  echo "  --catalog-dir <path>             Directory of the visor's catalog.sqlite on the visor host; it should be on local storage"
+  echo "                                   (default: an absolute catalog_db_path in the conf file, else work_dir/visor) [Modes: Start, Clean]"
+  echo "                                   --clean removes the catalog files on the visor host. Start writes the path into the conf file;"
+  echo "                                   later starts and --clean use it without the option. A reinstall resets it: give --catalog-dir to --clean again after one"
   echo ""
   echo "Keeper WAL Settings:"
   echo "  --wal                            Turn the keeper WAL on, in a directory discovered on each keeper host (also WAL_ENABLED=1) [Modes: Start]"
@@ -259,6 +268,10 @@ delegate_to_deploy_cluster() {
     [[ "${wal}" == "true" ]] && args+=("--wal")
     [[ -n "${WAL_DIR_LIST}" ]] && args+=("--wal-dir" "${WAL_DIR_LIST}")
   fi
+  # --clean needs it too: a reinstall resets the conf's catalog_db_path.
+  if [[ "${mode}" == "--start" || "${mode}" == "--clean" ]]; then
+    [[ -n "${CATALOG_DIR}" ]] && args+=("--catalog-dir" "${CATALOG_DIR}")
+  fi
   [[ "${mode}" == "--clean" && "${force}" == "true" ]] && args+=("--force")
 
   echo -e "${DEBUG}Delegating to: ${DEPLOY_CLUSTER_SCRIPT} ${args[*]}${NC}"
@@ -282,7 +295,7 @@ restart() {
 }
 
 parse_args() {
-  TEMP=$(getopt -o t:B:I:w:m:u:v:g:p:a:q:k:o:f:n:j:r:hbidsce --long build-type:,build-dir:,install-dir:,work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,wal,wal-dir:,restart-keeper:,force,help,build,install,start,stop,clean,verbose -- "$@")
+  TEMP=$(getopt -o t:B:I:w:m:u:v:g:p:a:q:k:o:f:n:j:r:hbidsce --long build-type:,build-dir:,install-dir:,work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,wal,wal-dir:,catalog-dir:,restart-keeper:,force,help,build,install,start,stop,clean,verbose -- "$@")
   if [ $? != 0 ]; then
     echo -e "${ERR}Terminating ...${NC}" >&2
     exit 1
@@ -410,6 +423,14 @@ parse_args() {
       ;;
     --wal-dir)
       WAL_DIR_LIST="$2"
+      shift 2
+      ;;
+    --catalog-dir)
+      if [[ -z "$2" ]]; then
+        echo -e "${ERR}--catalog-dir needs a directory${NC}" >&2
+        exit 1
+      fi
+      CATALOG_DIR="$2"
       shift 2
       ;;
     --restart-keeper)

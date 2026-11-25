@@ -76,6 +76,10 @@ RESTART_KEEPER_HOST=""
 WAL_ENABLED="${WAL_ENABLED:-0}"
 WAL_DIR_LIST=""
 
+# The directory for the visor's catalog file, from --catalog-dir; empty keeps a
+# catalog_db_path the conf already names, or ${WORK_DIR}/visor.
+CATALOG_DIR=""
+
 # Verbose flag
 verbose=false
 
@@ -113,6 +117,15 @@ usage() {
   echo "Configuration Settings:"
   echo "  -f|--conf-file <path>            Main configuration file (default: work_dir/conf/default-chrono-conf.json)"
   echo "  -n|--client-conf-file <path>     Client configuration file (default: work_dir/conf/default-chrono-client-conf.json)"
+  echo ""
+  echo "Visor Catalog Settings:"
+  echo "  --catalog-dir <path>             Directory of the visor's catalog.sqlite, on the visor host (default: an absolute"
+  echo "                                   chrono_visor.catalog_db_path in the conf file, else work_dir/visor). It should be on"
+  echo "                                   local storage: a warning is printed when that file system is NFS. --clean removes the"
+  echo "                                   catalog files the conf names, on the visor host."
+  echo "                                   start writes this path into the conf file; later starts and --clean use it without the"
+  echo "                                   option. --clean needs the same -f conf file that start used. A reinstall resets the"
+  echo "                                   conf: give --catalog-dir to --clean again after one; it overrides the conf"
   echo ""
   echo "Keeper WAL Settings:"
   echo "  --wal                            Turn the keeper WAL on (also WAL_ENABLED=1); each keeper host gets a directory"
@@ -401,6 +414,49 @@ update_visor_ip() {
 update_visor_monitor_file_path() {
   visor_host=$(head -1 ${VISOR_HOSTS})
   jq ".chrono_visor.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-visor-${visor_host}.log\"" "${CONF_FILE}" >tmp.json && mv tmp.json "${CONF_FILE}"
+}
+
+# The path the visor's catalog_db_path is set to, always absolute: under
+# --catalog-dir when given, else the conf's own value when absolute, else the
+# conf's relative value (the template's visor/catalog.sqlite) under WORK_DIR.
+visor_catalog_path() {
+  local configured
+  if [[ -n "${CATALOG_DIR}" ]]; then
+    realpath -ms "${CATALOG_DIR}/catalog.sqlite"
+    return
+  fi
+  configured=$(jq -r '.chrono_visor.catalog_db_path // ""' "${CONF_FILE}" 2>/dev/null || true)
+  [[ -n "${configured}" ]] || configured="visor/catalog.sqlite"
+  if [[ "${configured}" == /* ]]; then
+    realpath -ms "${configured}"
+  else
+    realpath -ms "${WORK_DIR}/${configured}"
+  fi
+}
+
+update_visor_catalog_path() {
+  jq --arg catalog_db_path "$(visor_catalog_path)" '.chrono_visor.catalog_db_path = $catalog_db_path' "${CONF_FILE}" >tmp.json && mv tmp.json "${CONF_FILE}"
+}
+
+# Prints a warning when the catalog's directory is on NFS on the visor host: the
+# catalog is SQLite in WAL mode, which needs local file locking and shared memory.
+# A host that does not answer, or has neither findmnt nor stat, gets no warning.
+warn_catalog_on_nfs() {
+  local visor_host catalog dir probe_cmd fstype reply
+  visor_host=$(head -1 "${VISOR_HOSTS}")
+  catalog=$(jq -r '.chrono_visor.catalog_db_path // ""' "${CONF_FILE}")
+  [[ "${catalog}" == /* && -n "${visor_host}" ]] || return 0
+  dir=$(dirname "${catalog}")
+  # The directory may not exist yet: ask about its nearest existing parent.
+  printf -v probe_cmd 'command -v findmnt >/dev/null 2>&1 || command -v stat >/dev/null 2>&1 || echo CATALOG_NOTOOL; d=%q; while [ ! -e "$d" ] && [ "$d" != / ]; do d=$(dirname "$d"); done; t=$(findmnt -rn -o FSTYPE --target "$d" 2>/dev/null | head -n 1); [ -n "$t" ] || t=$(stat -f -c %%T "$d" 2>/dev/null); echo "CATALOG_FSTYPE=$t"' "${dir}"
+  reply=$(ssh -n -o BatchMode=yes -o ConnectTimeout=10 "${visor_host}" "bash -c $(printf '%q' "${probe_cmd}")" 2>/dev/null) || true
+  if grep -q '^CATALOG_NOTOOL' <<<"${reply}" && [[ "${verbose}" == "true" ]]; then
+    echo -e "${DEBUG}${visor_host}: neither findmnt nor stat is available; the file system of ${dir} is not checked${NC}"
+  fi
+  fstype=$(sed -n 's/^CATALOG_FSTYPE=//p' <<<"${reply}" | head -n 1)
+  if [[ "${fstype}" == nfs* ]]; then
+    echo -e "${WARN}WARNING: ${visor_host}: the visor catalog ${catalog} is on ${fstype}. SQLite needs local file locking and shared memory; pass --catalog-dir with a directory on local storage of ${visor_host}.${NC}" >&2
+  fi
 }
 
 update_client_monitor_file_path() {
@@ -851,6 +907,8 @@ start() {
 
   update_visor_ip
   update_visor_monitor_file_path
+  update_visor_catalog_path
+  warn_catalog_on_nfs
   update_client_monitor_file_path
   generate_conf_for_each_recording_group
   check_rpc_comm_conf
@@ -904,6 +962,15 @@ clean() {
   # First, so a refusal leaves the generated confs and hosts files a restart needs.
   clean_keeper_wal_dirs "${force}" || exit 1
 
+  # Before anything else is removed, and before the archive: a catalog without its
+  # archive names files that are gone, the reverse only leaves archive files
+  # nothing names. When the catalog stays, so do the archive, the confs and the
+  # hosts files, and a second --clean finds the same catalog path.
+  clean_visor_catalog || {
+    echo -e "${ERR}Visor catalog not removed; the archive in ${OUTPUT_DIR} is kept. Run --clean again${NC}" >&2
+    exit 1
+  }
+
   echo -e "${DEBUG}Removing conf and hosts files ...${NC}"
   rm -f ${KEEPER_HOSTS}*.*
   rm -f ${GRAPHER_HOSTS}*.*
@@ -921,6 +988,48 @@ clean() {
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Clean done${NC}" || true
 }
 
+# Removes the catalog file visor_catalog_path names (the same path start wrote into
+# the conf), and its -wal and -shm siblings, on the visor's host. The catalog's
+# directory is removed when that leaves it empty and it is work_dir/visor, the one
+# this script creates; a directory the user chose with --catalog-dir is kept. A
+# cleaned deployment then starts with no chronicles or stories that name deleted
+# archive files. Prints each file removed. Returns 1 when a visor host did not
+# answer or a file is still there afterwards: the catalog is then still in place.
+clean_visor_catalog() {
+  local catalog cmd reply host removed_file left rmdir_dir status=0 any_removed=false
+  catalog=$(visor_catalog_path)
+  rmdir_dir=""
+  [[ "$(dirname "${catalog}")" == "$(realpath -ms "${WORK_DIR}/visor")" ]] && rmdir_dir=$(dirname "${catalog}")
+  echo -e "${DEBUG}Removing visor catalog ${catalog} ...${NC}"
+  printf -v cmd 'c=%q; d=%q; left=; for f in "$c" "$c-wal" "$c-shm"; do if [ -e "$f" ] || [ -L "$f" ]; then rm -f -- "$f" && echo "CATALOG_REMOVED $f"; fi; if [ -e "$f" ] || [ -L "$f" ]; then [ -n "$left" ] || left=$f; fi; done; if [ -n "$left" ]; then echo "CATALOG_LEFT $left"; exit 1; fi; if [ -n "$d" ]; then rmdir -- "$d" 2>/dev/null; fi; echo CATALOG_OK' \
+    "${catalog}" "${rmdir_dir}"
+  # One ssh per hosts_visor entry, as warn_catalog_on_nfs does: the reply is
+  # attributed to the entry it was asked of, whatever `hostname` prints there.
+  while IFS= read -r host; do
+    [[ -z "${host}" || "${host}" == \#* ]] && continue
+    reply=$(ssh -n -o BatchMode=yes -o ConnectTimeout=10 "${host}" "bash -c $(printf '%q' "${cmd}")" 2>/dev/null || true)
+    while read -r removed_file; do
+      [[ -n "${removed_file}" ]] || continue
+      echo -e "${DEBUG}Removed visor catalog file ${removed_file} on ${host}${NC}"
+      any_removed=true
+    done < <(sed -n 's/^CATALOG_REMOVED //p' <<<"${reply}")
+    if grep -qx 'CATALOG_OK' <<<"${reply}"; then
+      continue
+    fi
+    left=$(sed -n 's/^CATALOG_LEFT //p' <<<"${reply}" | head -n 1)
+    if [[ -n "${left}" ]]; then
+      echo -e "${WARN}WARNING: ${left} is not removed on ${host}${NC}" >&2
+    else
+      echo -e "${WARN}WARNING: ${host} did not answer; ${catalog} is not removed${NC}" >&2
+    fi
+    status=1
+  done <"${VISOR_HOSTS}"
+  if [[ "${any_removed}" == "false" ]] && ((status == 0)); then
+    echo -e "${DEBUG}No visor catalog files at ${catalog}${NC}"
+  fi
+  return "${status}"
+}
+
 # Removes the archive the deployment wrote into the output directory, and
 # nothing else; see archive_cleanup.sh.
 clean_output_dir() {
@@ -928,7 +1037,7 @@ clean_output_dir() {
 }
 
 parse_args() {
-  TEMP=$(getopt -o w:m:u:v:g:p:a:q:k:o:f:n:j:r:hdsce --long work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,wal,wal-dir:,restart-keeper:,force,help,start,stop,clean,verbose -- "$@")
+  TEMP=$(getopt -o w:m:u:v:g:p:a:q:k:o:f:n:j:r:hdsce --long work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,wal,wal-dir:,catalog-dir:,restart-keeper:,force,help,start,stop,clean,verbose -- "$@")
   if [ $? != 0 ]; then
     echo -e "${ERR}Terminating ...${NC}" >&2
     exit 1
@@ -1040,6 +1149,14 @@ parse_args() {
       fi
       WAL_ENABLED=1
       WAL_DIR_LIST="$2"
+      shift 2
+      ;;
+    --catalog-dir)
+      if [[ -z "$2" ]]; then
+        echo -e "${ERR}--catalog-dir needs a directory${NC}" >&2
+        exit 1
+      fi
+      CATALOG_DIR="$2"
       shift 2
       ;;
     --restart-keeper)
