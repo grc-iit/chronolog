@@ -107,6 +107,15 @@ int chronolog::VisorConfiguration::parseJsonConf(json_object* json_conf)
             }
             RPC_SLOTS = static_cast<size_t>(slots);
         }
+        else if(strcmp(key, "catalog_db_path") == 0)
+        {
+            if(!json_object_is_type(val, json_type_string) || json_object_get_string_len(val) == 0)
+            {
+                std::cerr << "[VisorConfiguration] Invalid 'catalog_db_path': expected a non-empty string" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            CATALOG_DB_PATH = json_object_get_string(val);
+        }
         else
         {
             std::cerr << "[VisorConfiguration] Unknown Visor configuration: " << key << std::endl;

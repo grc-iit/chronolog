@@ -316,11 +316,11 @@ endif()
 # directory's file system, device and free space, plus one real inspection.
 add_executable(keeper_wal_mount_check_test
     chrono_keeper_wal_mount_check_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalMountCheck.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/src/WalMountCheck.cpp
 )
 
 target_include_directories(keeper_wal_mount_check_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
 )
 
 target_link_libraries(keeper_wal_mount_check_test PRIVATE

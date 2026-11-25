@@ -9,16 +9,21 @@
 #include <vector>
 
 #include "Chronicle.h"
+#include "VisorCatalogStore.h"
 #include "chronolog_types.h"
 
 class ClientRegistryManager;
 
 typedef uint64_t StoryId;
 
+// The visor's chronicles and stories. Each change is committed to the catalog
+// store first, under the directory's mutex, and applied to memory only after
+// the store returns success; a failed commit returns CL_ERR_UNKNOWN and leaves
+// the directory unchanged. Reads are served from memory.
 class ChronicleMetaDirectory
 {
 public:
-    ChronicleMetaDirectory();
+    explicit ChronicleMetaDirectory(chronolog::VisorCatalogStore& store);
 
     ~ChronicleMetaDirectory();
 
@@ -28,6 +33,9 @@ public:
     }
 
     std::unordered_map<uint64_t, Chronicle*>* getChronicleMap() { return chronicleMap_; }
+
+    // Fills an empty directory from the catalog's rows, at startup.
+    int load(chronolog::CatalogSnapshot const& snapshot);
 
     int create_chronicle(const std::string& name);
 
@@ -74,6 +82,13 @@ public:
     int release_all_acquired_stories(chronolog::ClientId const& client_id,
                                      std::vector<StoryId>& released_with_no_acquirers_left);
 
+    // Commits the destroy_pending flag of a chronicle or story row: set before
+    // its destroy goes to the graphers, cleared with the row (plan Amendment
+    // P6). CL_SUCCESS, or CL_ERR_UNKNOWN when the store failed or has no row.
+    int set_chronicle_destroy_pending(std::string const& chronicle_name, bool pending);
+
+    int set_story_destroy_pending(std::string const& chronicle_name, std::string const& story_name, bool pending);
+
     int show_chronicles(std::vector<std::string>&);
 
     int show_stories(const std::string& chronicle_name, std::vector<std::string>&);
@@ -81,6 +96,7 @@ public:
 private:
     std::unordered_map<uint64_t, Chronicle*>* chronicleMap_;
     std::mutex g_chronicleMetaDirectoryMutex_;
+    chronolog::VisorCatalogStore& store_;
     ClientRegistryManager* clientRegistryManager_ = nullptr;
 };
 

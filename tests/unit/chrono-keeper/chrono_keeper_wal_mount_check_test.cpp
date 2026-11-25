@@ -159,3 +159,21 @@ TEST(WalMountCheck, InspectingAMissingDirectoryReturnsTheError)
     chl::WalMountInfo info;
     EXPECT_EQ(chl::inspectWalDirectory("/nonexistent/wal/mount/check", info), ENOENT);
 }
+
+TEST(WalMountCheck, NearestExistingDirectoryOfAFileInAMissingDirectoryIsTheExistingAncestor)
+{
+    std::string pattern = (fs::temp_directory_path() / "wal_mount_check_XXXXXX").string();
+    ASSERT_NE(mkdtemp(pattern.data()), nullptr);
+
+    EXPECT_EQ(chl::nearestExistingDirectory(pattern + "/visor/catalog.sqlite"), pattern);
+    EXPECT_EQ(chl::nearestExistingDirectory(pattern + "/catalog.sqlite"), pattern);
+    EXPECT_EQ(chl::nearestExistingDirectory(pattern), pattern);
+
+    std::error_code ec;
+    fs::remove_all(pattern, ec);
+}
+
+TEST(WalMountCheck, NearestExistingDirectoryOfARelativePathIsAbsolute)
+{
+    EXPECT_EQ(chl::nearestExistingDirectory("no_such_dir_here/catalog.sqlite"), fs::current_path().string());
+}
